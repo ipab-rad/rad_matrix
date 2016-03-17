@@ -1,0 +1,6 @@
+# Adds a non-central force to a shape object that is dynamically enabled.
+int64 handle
+geometry_msgs/Point position
+geometry_msgs/Vector3 force
+---
+int64 result

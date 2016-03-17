@@ -1,0 +1,8 @@
+int64 handle
+int64 relativeToObjectHandle
+---
+geometry_msgs/Pose pose_mean
+geometry_msgs/Point pose_xyz_variance
+sim_architect/Euler pose_rpy_variance
+float64[] pose_covariance
+int64 sample_size

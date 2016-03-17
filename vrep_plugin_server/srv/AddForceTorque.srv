@@ -1,0 +1,6 @@
+# Adds a force and/or torque to a shape object that is dynamically enabled.
+# Forces are applied at the center of mass.
+int64 handle
+geometry_msgs/Wrench wrench
+---
+int64 result

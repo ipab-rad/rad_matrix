@@ -1,0 +1,5 @@
+string name       # Not currently used
+shape_msgs/SolidPrimitive shape
+float32 mass
+---
+int64 handle
