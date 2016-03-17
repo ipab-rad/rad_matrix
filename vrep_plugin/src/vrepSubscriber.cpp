@@ -490,7 +490,7 @@ void CSubscriberData::setTwistCommandCallback(const geometry_msgs::Twist::ConstP
 {
 	if (_handleGeneralCallback_before())
 	{
-		simFloat command[6] = {vel->linear.x,vel->linear.y,vel->linear.z,vel->angular.x,vel->angular.y,vel->angular.z};
+		simFloat command[6] = {(float)vel->linear.x,(float)vel->linear.y,(float)vel->linear.z,(float)vel->angular.x,(float)vel->angular.y,(float)vel->angular.z};
 		if (simSetStringSignal(auxStr.c_str(),(simChar*)command,6*sizeof(simFloat))==-1)
 			shutDownGeneralSubscriber();
 		_handleGeneralCallback_after();
