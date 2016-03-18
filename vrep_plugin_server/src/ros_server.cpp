@@ -52,7 +52,7 @@ bool ROSServer::initialize() {
 
 	// Load scene
 	this->loadScene();
-	this->startSim();
+	//this->startSim();
 
 	heartbeat_timer =
 	    node->createTimer(ros::Duration(0.5),
@@ -80,9 +80,13 @@ void ROSServer::startSim() {
 	// Start Sim
 	ROS_INFO("Starting simulation... (%d/%d)", sim_iter, MAX_SIMS_COUNT);
 	int st_res = simStartSimulation();
-	if (st_res == -1)
+	if (st_res == -1) {
 		ROS_ERROR("Cannot start scene!");
-	else {
+		ros::Duration(1.5).sleep();
+		if (simStartSimulation() == -1) {
+			ROS_ERROR("Second attempt at starting failed.");
+		}
+	} else {
 		// Increase iteration counter
 		++sim_iter;
 		ROS_INFO("Started scene (code: %d).", st_res);

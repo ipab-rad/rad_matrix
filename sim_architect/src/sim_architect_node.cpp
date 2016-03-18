@@ -19,6 +19,7 @@
 #include <vrep_common/simRosStartSimulation.h>
 #include "sim_architect/GetNumberOfSimulations.h"
 #include "sim_architect/GetObjectPose.h"
+#include "sim_architect/GetSimulationNames.h"
 
 #include <Eigen/Geometry>
 #include <Eigen/Core>
@@ -38,6 +39,7 @@ ros::ServiceServer start_simulation_service;
 ros::ServiceServer add_force_service;
 ros::ServiceServer add_force_torque_service;
 ros::ServiceServer get_object_pose_service;
+ros::ServiceServer get_simulation_names_service;
 
 // Random variation data
 std::random_device rd;
@@ -397,6 +399,16 @@ bool get_object_pose_callback(
     return true;
 }
 
+bool get_simulation_names_callback(
+    sim_architect::GetSimulationNames::Request& req,
+    sim_architect::GetSimulationNames::Response& res) {
+    for (auto& sim : sims) {
+        res.names.push_back(sim.first);
+    }
+    return true;
+}
+
+
 void simulationCleanUpTimerCallback(const ros::TimerEvent& e) {
     for (auto it = sims.cbegin(); it != sims.cend();) {
         if ((*it).second < e.last_real) {
@@ -436,6 +448,8 @@ int main(int argc, char** argv) {
                                                        add_force_torque_callback);
     get_object_pose_service =  node->advertiseService("getObjectPose",
                                                       get_object_pose_callback);
+    get_simulation_names_service =  node->advertiseService("getSimulationNames",
+                                                           get_simulation_names_callback);
 
     ROS_INFO_STREAM("All top level servicees and topics advertised!");
 
