@@ -1,0 +1,3 @@
+#!/bin/bash
+mkdir -p unneeded_libs
+mv libv_repExtBubbleRob.so libv_repExtK3.so libv_repExtReflexxesTypeIV.so libv_repExtCollada.so libv_repExtLuaRemoteApiClient.so libv_repExtRemoteApi.so libv_repExtConvexDecompose.so libv_repExtMtb.so libv_repExtRRS1.so libv_repExtDynamicsBullet.so libv_repExtOMPL.so libv_repExtSimpleFilter.so libv_repExtDynamicsNewton.so libv_repExtOpenMesh.so libv_repExtUrdf.so libv_repExtDynamicsVortex.so libv_repExtPovRay.so libv_repExtVision.so libv_repExtExternalRenderer.so libv_repExtQhull.so ./unneeded_libs
