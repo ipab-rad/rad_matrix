@@ -20,6 +20,7 @@ add_service_files(
   SetShapeColour.srv
   AddForce.srv
   AddForceTorque.srv
+  IsSceneStatic.srv
 )
 
 generate_messages(

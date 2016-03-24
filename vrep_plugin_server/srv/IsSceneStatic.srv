@@ -1,0 +1,4 @@
+# Returns whether the scene is static, where if an individual component of the speed of an object (both linear and angular) is above to max_speed, the scene is considered dynamic.
+float32 max_speed
+---
+bool is_static

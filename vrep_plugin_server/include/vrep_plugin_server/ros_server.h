@@ -13,6 +13,7 @@
 #include "vrep_plugin_server/SetShapeColour.h"
 #include "vrep_plugin_server/AddForce.h"
 #include "vrep_plugin_server/AddForceTorque.h"
+#include "vrep_plugin_server/IsSceneStatic.h"
 
 #define WORLD_FRAME 	-1
 #define MAX_SIMS_COUNT	1
@@ -41,6 +42,9 @@ class ROSServer {
 	sensor_msgs::CameraInfo CreateCameraInfo(int width, int height);
 
 	void streamAllData();
+
+	bool isSceneStatic(float max_speed = 0.1f);
+	std::vector<int> getShapes();
 	void simulationUpTimerCallback(const ros::TimerEvent& e);
 	bool add_object_callback(vrep_plugin_server::AddShape::Request& request,
 	                         vrep_plugin_server::AddShape::Response& response);
@@ -53,6 +57,9 @@ class ROSServer {
 	bool add_force_torque_callback(
 	    vrep_plugin_server::AddForceTorque::Request& request,
 	    vrep_plugin_server::AddForceTorque::Response& response);
+	bool is_scene_static_callback(
+	    vrep_plugin_server::IsSceneStatic::Request& request,
+	    vrep_plugin_server::IsSceneStatic::Response& response);
 
 	// Data
 	ros::NodeHandle* node;
@@ -67,6 +74,7 @@ class ROSServer {
 	ros::ServiceServer set_colour_shape_service;
 	ros::ServiceServer add_force_service;
 	ros::ServiceServer add_force_torque_service;
+	ros::ServiceServer is_scene_static_service;
 
 	ros::Timer heartbeat_timer;
 

@@ -373,7 +373,6 @@ bool get_object_pose_callback(
         for (int i = 0; i < cov.size(); ++i) {
             res.pose_covariance.push_back(cov.data()[i]);
         }
-
     } else {
         // Cannot calcualte with a single sample
         res.pose_xyz_variance.x = 0;

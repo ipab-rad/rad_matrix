@@ -48,7 +48,13 @@ bool ROSServer::initialize() {
 	add_force_torque_service =
 	    node->advertiseService("addForceTorque",
 	                           &ROSServer::add_force_torque_callback, this);
+	is_scene_static_service =
+	    node->advertiseService("isSceneStatic",
+	                           &ROSServer::is_scene_static_callback, this);
 	ROS_INFO_STREAM("Finished with server reconf.");
+
+
+
 
 	// Load scene
 	this->loadScene();
@@ -92,6 +98,39 @@ void ROSServer::startSim() {
 		ROS_INFO("Started scene (code: %d).", st_res);
 		// Need to get the handlers, as starting it manually calls
 	}
+}
+
+std::vector<int> ROSServer::getShapes() {
+	ROS_DEBUG_STREAM(sim_object_shape_type << " " << sim_handle_all);
+	std::vector<int> handles;
+	int i = 0;
+	do {
+		int h = simGetObjects(i++, sim_object_shape_type); // or sim_handle_all
+		ROS_DEBUG_STREAM("Object[" << i - 1 << "]=" << h);
+		if (h != -1) {
+			handles.push_back(h);
+		} else {
+			break;
+		}
+	} while (true);
+	return handles;
+}
+
+bool ROSServer::isSceneStatic(float max_speed) {
+	std::vector<int> handles = getShapes();
+	for (const int& h : handles) {
+		float linearVelocity[3], angularVelocity[3];
+		int r =  simGetVelocity(h, linearVelocity, angularVelocity);
+		if (r == -1)
+			continue;
+		for (const float& lv : linearVelocity)
+			if (lv > max_speed)
+				return false;
+		for (const float& av : linearVelocity)
+			if (av > max_speed)
+				return false;
+	}
+	return true;
 }
 
 void ROSServer::simulationUpTimerCallback(const ros::TimerEvent& e) {
@@ -194,6 +233,13 @@ bool ROSServer::add_force_torque_callback(
 		return false;
 	}
 	response.result = result;
+	return true;
+}
+
+bool ROSServer::is_scene_static_callback(
+    vrep_plugin_server::IsSceneStatic::Request& request,
+    vrep_plugin_server::IsSceneStatic::Response& response) {
+	response.is_static = isSceneStatic(request.max_speed);
 	return true;
 }
 
