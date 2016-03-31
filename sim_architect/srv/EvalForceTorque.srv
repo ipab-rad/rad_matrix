@@ -1,0 +1,28 @@
+# Apply the force torque on an object, where the actual forces are sampled
+# from the distribution. While keeping track on the objects specified.
+# Return their poses after scene becomes static.
+# The size of the wrench var should be <= number of simulations.
+
+string reset_scene_file
+
+int64 handle
+geometry_msgs/Wrench[] wrench
+
+# All distribution types
+uint8 UNIFORM=1
+uint8 GAUSSIAN=2
+
+uint8 distribution_type
+float64[] params
+
+# The params ids are as follows
+uint8 UNIFORM_MIN=0
+uint8 UNIFORM_MAX=1
+
+uint8 GAUSSIAN_MEAN=0
+uint8 GAUSSIAN_VAR=1
+
+# Which shapes to track
+string[] names
+---
+geometry_msgs/PoseArray[] poses

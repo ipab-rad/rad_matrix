@@ -59,6 +59,7 @@ add_service_files(
   GetNumberOfSimulations.srv
   GetSimulationNames.srv
   GetObjectPose.srv
+  EvalForceTorque.srv
 )
 
 ## Generate actions in the 'action' folder

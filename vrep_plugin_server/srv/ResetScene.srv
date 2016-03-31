@@ -1,5 +1,6 @@
 # Specify the file containing the instructions OR
 # give them in the message.
+# Currently the poses are noise free.
 
 string filename
 string[] instructions

@@ -11,22 +11,32 @@
 #include <mutex>
 
 #include <std_msgs/String.h>
+#include <geometry_msgs/Pose.h>
+#include <geometry_msgs/PoseArray.h>
+#include <geometry_msgs/Vector3.h>
 #include <vrep_plugin_server/AddForce.h>
 #include <vrep_plugin_server/AddForceTorque.h>
+#include <vrep_plugin_server/IsSceneStatic.h>
+#include <vrep_plugin_server/ResetScene.h>
 #include <vrep_common/simRosSetObjectPose.h>
 #include <vrep_common/simRosGetObjectPose.h>
 #include <vrep_common/simRosStopSimulation.h>
 #include <vrep_common/simRosStartSimulation.h>
+#include <vrep_common/simRosGetObjectHandle.h>
+
 #include "sim_architect/GetNumberOfSimulations.h"
 #include "sim_architect/GetObjectPose.h"
 #include "sim_architect/GetSimulationNames.h"
+#include "sim_architect/EvalForceTorque.h"
 
 #include <Eigen/Geometry>
 #include <Eigen/Core>
 
+using namespace std;
 
 const int WORLD_FRAME(-1);
 double _2PI(2 * M_PI);
+enum vecOrder {x = 0, y = 1, z = 2, rr = 3, pp = 4, yy = 5};
 
 ros::NodeHandle* node;
 std::map<std::string, ros::Time> sims;
@@ -40,10 +50,12 @@ ros::ServiceServer add_force_service;
 ros::ServiceServer add_force_torque_service;
 ros::ServiceServer get_object_pose_service;
 ros::ServiceServer get_simulation_names_service;
+ros::ServiceServer eval_force_torque_service;
 
 // Random variation data
 std::random_device rd;
 std::mt19937 gen(rd());
+std::default_random_engine gen2;
 const float NOISE_pos_variance(0.001);      // 1mm
 const float NOISE_rotation_variance(0.1);   //
 const float NOISE_force_variance(0.1);      // 0.1N
@@ -62,6 +74,13 @@ Eigen::Quaterniond RPY2Quaternion(double r, double p, double y) {
 
     Eigen::Quaternion<double> q = rollAngle * yawAngle * pitchAngle;
     return q;
+}
+
+template <class Tv, class Trand>
+void addNoiseV3(Tv& v, Trand& rand) {
+    v.x += rand(gen);
+    v.y += rand(gen);
+    v.z += rand(gen);
 }
 
 // Callbacks
@@ -94,9 +113,10 @@ bool set_object_pose_callback(
             std::thread([sim, &all_ok, &all_ok_mutex]
         (vrep_common::simRosSetObjectPose nmsg) ->void {
 
-            nmsg.request.pose.position.x += NOISE_POS(gen);
-            nmsg.request.pose.position.y += NOISE_POS(gen);
-            nmsg.request.pose.position.z += NOISE_POS(gen);
+            addNoiseV3(nmsg.request.pose.position, NOISE_POS);
+            // nmsg.request.pose.position.x += NOISE_POS(gen);
+            // nmsg.request.pose.position.y += NOISE_POS(gen);
+            // nmsg.request.pose.position.z += NOISE_POS(gen);
 
             Eigen::Quaternionf org(
                 nmsg.request.pose.orientation.x,
@@ -214,13 +234,15 @@ bool add_force_callback(
         ts.push_back(
             std::thread([sim, &all_ok, &all_ok_mutex]
         (vrep_plugin_server::AddForce nmsg) ->void {
-            nmsg.request.position.x += NOISE_POS(gen);
-            nmsg.request.position.y += NOISE_POS(gen);
-            nmsg.request.position.z += NOISE_POS(gen);
+            addNoiseV3(nmsg.request.position, NOISE_POS);
+            // nmsg.request.position.x += NOISE_POS(gen);
+            // nmsg.request.position.y += NOISE_POS(gen);
+            // nmsg.request.position.z += NOISE_POS(gen);
 
-            nmsg.request.force.x += NOISE_FORCE(gen);
-            nmsg.request.force.y += NOISE_FORCE(gen);
-            nmsg.request.force.z += NOISE_FORCE(gen);
+            addNoiseV3(nmsg.request.force, NOISE_FORCE);
+            // nmsg.request.force.x += NOISE_FORCE(gen);
+            // nmsg.request.force.y += NOISE_FORCE(gen);
+            // nmsg.request.force.z += NOISE_FORCE(gen);
 
             if (ros::service::call(sim.first + "/addForce", nmsg) &&
             (nmsg.response.result != -1)) {
@@ -253,13 +275,15 @@ bool add_force_torque_callback(
         ts.push_back(
             std::thread([sim, &all_ok, &all_ok_mutex]
         (vrep_plugin_server::AddForceTorque nmsg) ->void {
-            nmsg.request.wrench.force.x += NOISE_FORCE(gen);
-            nmsg.request.wrench.force.y += NOISE_FORCE(gen);
-            nmsg.request.wrench.force.z += NOISE_FORCE(gen);
+            addNoiseV3(nmsg.request.wrench.force, NOISE_FORCE);
+            // nmsg.request.wrench.force.x += NOISE_FORCE(gen);
+            // nmsg.request.wrench.force.y += NOISE_FORCE(gen);
+            // nmsg.request.wrench.force.z += NOISE_FORCE(gen);
 
-            nmsg.request.wrench.torque.x += NOISE_POS(gen);
-            nmsg.request.wrench.torque.y += NOISE_POS(gen);
-            nmsg.request.wrench.torque.z += NOISE_POS(gen);
+            addNoiseV3(nmsg.request.wrench.torque, NOISE_TORQUE);
+            // nmsg.request.wrench.torque.x += NOISE_TORQUE(gen);
+            // nmsg.request.wrench.torque.y += NOISE_TORQUE(gen);
+            // nmsg.request.wrench.torque.z += NOISE_TORQUE(gen);
 
             if (ros::service::call(sim.first + "/addForceTorque", nmsg) &&
             (nmsg.response.result != -1) ) {
@@ -282,16 +306,12 @@ bool add_force_torque_callback(
     return true;
 }
 
-// TODO: CALC mean and covariance from all poses returned by the sims
-
-bool get_object_pose_callback(
-    sim_architect::GetObjectPose::Request& req,
-    sim_architect::GetObjectPose::Response& res) {
-    std::vector<std::vector<double>> poses(6, std::vector<double>(0, 0));
-    enum vecOrder {x = 0, y = 1, z = 2, rr = 3, pp = 4, yy = 5};
+bool get_all_poses(std::vector<std::vector<double>>& poses,
+                   int handle, int relativeToObjectHandle) {
+    poses = std::vector<std::vector<double>>(6, std::vector<double>(0, 0));
     vrep_common::simRosGetObjectPose msg;
-    msg.request.handle = req.handle;
-    msg.request.relativeToObjectHandle = req.relativeToObjectHandle;
+    msg.request.handle = handle;
+    msg.request.relativeToObjectHandle = relativeToObjectHandle;
     ros::WallTime begin = ros::WallTime::now();
     int all_ok = 0;
     std::vector<std::thread> ts;
@@ -339,8 +359,18 @@ bool get_object_pose_callback(
     std::for_each(ts.begin(), ts.end(), [](std::thread & t) {
         t.join();
     });
-    ROS_INFO_STREAM("[simRosGetObjectPose] Time elapsed: " <<
+
+    ROS_INFO_STREAM("[get_all_poses] Time elapsed: " <<
                     ros::WallTime::now() - begin);
+    return (!poses.empty());
+}
+
+
+bool get_object_pose_callback(
+    sim_architect::GetObjectPose::Request& req,
+    sim_architect::GetObjectPose::Response& res) {
+    std::vector<std::vector<double>> poses; //(6, std::vector<double>(0, 0));
+    get_all_poses(poses, req.handle, req.relativeToObjectHandle);
 
     if (poses[0].empty()) {
         ROS_WARN_STREAM("No positions recorded.");
@@ -393,7 +423,7 @@ bool get_object_pose_callback(
     res.pose_mean.orientation.y = mean_quaternion.y();
     res.pose_mean.orientation.z = mean_quaternion.z();
     res.pose_mean.orientation.w = mean_quaternion.w();
-    res.sample_size = all_ok;
+    res.sample_size = poses[0].size();
 
     return true;
 }
@@ -407,6 +437,123 @@ bool get_simulation_names_callback(
     return true;
 }
 
+bool eval_force_torque_callback(
+    sim_architect::EvalForceTorque::Request& req,
+    sim_architect::EvalForceTorque::Response& res) {
+    ros::WallTime begin = ros::WallTime::now();
+    std::vector<geometry_msgs::Pose> poses(sims.size());
+    int all_ok = 0;
+    std::vector<std::thread> ts;
+    std::mutex data_mutex;
+    int id = 0;
+    res.poses = std::vector<geometry_msgs::PoseArray>(sims.size());
+    for (auto& sim : sims) {
+        ts.push_back(
+            std::thread([sim, &all_ok, &data_mutex, &poses, &req, &res]
+        (int i) ->void {
+            // TODO: use parallel for
+            // ResetScene
+            vrep_plugin_server::ResetScene reset_msg;
+            reset_msg.request.filename = req.reset_scene_file;
+            reset_msg.request.start_scene = true;
+            if (!ros::service::call(sim.first + "/resetScene", reset_msg)) {
+                ROS_WARN_STREAM("Cannot reset scenes for " << sim.first);
+                return;
+            }
+
+            ROS_INFO_STREAM("ResetScene: success");
+
+            // Convert names to handles. Keep order.
+            vrep_common::simRosGetObjectHandle handle_msg;
+            vector<int> handles(req.names.size(), -1);
+            int hid = 0;
+            for (auto& name : req.names) {
+                handle_msg.request.objectName = name;
+                if (!ros::service::call(sim.first + "/simRosGetObjectHandle", handle_msg)) {
+                    ROS_WARN_STREAM("Cannot get handle of " << name << " at " << sim.first);
+                } else {
+                    handles[hid] = handle_msg.response.handle;
+                }
+                ++hid;
+            }
+            ROS_INFO_STREAM("simRosGetObjectHandle: success");
+
+            // Add forceTorque - id is 'i'
+            switch (req.distribution_type) {
+                case (sim_architect::EvalForceTorque::Request::UNIFORM): {
+                    std::uniform_real_distribution<double> distr(
+                        req.params[sim_architect::EvalForceTorque::Request::UNIFORM_MIN],
+                        req.params[sim_architect::EvalForceTorque::Request::UNIFORM_MAX]);
+                    //ROS_INFO_STREAM("Created a noise distribution" << req.wrench[i].force);
+                    addNoiseV3(req.wrench[i].force, distr);
+                    //ROS_INFO_STREAM("Added to force");
+                    addNoiseV3(req.wrench[i].torque, distr);
+                    //ROS_INFO_STREAM("Added to torque");
+                    break;
+                }
+                case (sim_architect::EvalForceTorque::Request::GAUSSIAN): {
+                    std::normal_distribution<> distr(
+                        req.params[sim_architect::EvalForceTorque::Request::GAUSSIAN_MEAN],
+                        req.params[sim_architect::EvalForceTorque::Request::GAUSSIAN_VAR]);
+                    addNoiseV3(req.wrench[i].force, distr);
+                    addNoiseV3(req.wrench[i].torque, distr);
+                    break;
+                }
+                default:
+                    ROS_WARN_STREAM("Wrong distribution type!");
+                    return;
+            }
+            ROS_INFO_STREAM("Adding noise: success");
+
+            vrep_plugin_server::AddForceTorque force_t_msg;
+            force_t_msg.request.handle = req.handle;
+            force_t_msg.request.wrench = req.wrench[i];
+            if (!ros::service::call(sim.first + "/addForceTorque", force_t_msg)) {
+                ROS_WARN_STREAM("Cannot add force torque!");
+                return;
+            }
+            ROS_INFO_STREAM("AddForceTorque: success");
+
+            // Wait while scene(i) is static
+            vrep_plugin_server::IsSceneStatic static_msg;
+            static_msg.request.max_speed = 0.01;
+            while (ros::service::call(sim.first + "/isSceneStatic", static_msg) && !static_msg.response.is_static) {
+                ros::Duration(0.005).sleep(); // 5 ms.
+                ROS_INFO_STREAM("Scene still not static!");
+            }
+
+            // Get object poses
+            vrep_common::simRosGetObjectPose pose_msg;
+            hid = 0;
+            res.poses[i].poses = std::vector<geometry_msgs::Pose>(handles.size());
+            res.poses[i].header.frame_id = sim.first;
+            for (auto& handle : handles) {
+                if (handle == -1) {++hid; continue;}
+                pose_msg.request.handle = handle;
+                pose_msg.request.relativeToObjectHandle = WORLD_FRAME;
+                if (ros::service::call(sim.first + "/simRosGetObjectPose", pose_msg) &&
+                        (pose_msg.response.result != -1) ) {
+                    data_mutex.lock();
+                    res.poses[i].poses[hid] = pose_msg.response.pose.pose;
+                    ++all_ok;
+                    data_mutex.unlock();
+                } else {
+                    ROS_WARN_STREAM("Cannot get_object_pose at " << sim.first);
+                }
+                ++hid;
+            }
+            ROS_INFO_STREAM("simRosGetObjectPose: success");
+        }, id++));
+    }
+
+    std::for_each(ts.begin(), ts.end(), [](std::thread & t) {
+        t.join();
+    });
+
+    ROS_INFO_STREAM("[EvalForceTorque] Time elapsed: " <<
+                    ros::WallTime::now() - begin);
+    return true;
+}
 
 void simulationCleanUpTimerCallback(const ros::TimerEvent& e) {
     for (auto it = sims.cbegin(); it != sims.cend();) {
@@ -449,8 +596,9 @@ int main(int argc, char** argv) {
                                                       get_object_pose_callback);
     get_simulation_names_service =  node->advertiseService("getSimulationNames",
                                                            get_simulation_names_callback);
-
-    ROS_INFO_STREAM("All top level servicees and topics advertised!");
+    eval_force_torque_service = node->advertiseService("evalForceTorque",
+                                                       eval_force_torque_callback);
+    ROS_INFO_STREAM("All top level services and topics advertised!");
 
     ros::Timer sim_cleanup_timer =
         node->createTimer(ros::Duration(5), simulationCleanUpTimerCallback);

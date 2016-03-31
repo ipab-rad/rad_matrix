@@ -299,6 +299,7 @@ bool ROSServer::parseInstructions(const std::vector<std::string>& instr) {
            height >> width >> depth >>
            m >>
            red >> green >> blue;
+        // TODO: Add noise to all the dimensions
         ROS_DEBUG_STREAM("f: "  << shape << " " << x << " " << y << " " << z << " " <<
                          xx << " " << yy << " " << zz << " " << ww << " " <<
                          height << " " << width << " " << depth << " " <<
