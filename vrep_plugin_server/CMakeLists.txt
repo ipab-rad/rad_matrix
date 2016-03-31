@@ -21,6 +21,7 @@ add_service_files(
   AddForce.srv
   AddForceTorque.srv
   IsSceneStatic.srv
+  ResetScene.srv
 )
 
 generate_messages(

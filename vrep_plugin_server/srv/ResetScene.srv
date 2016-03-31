@@ -1,0 +1,9 @@
+# Specify the file containing the instructions OR
+# give them in the message.
+
+string filename
+string[] instructions
+bool reload_scene
+bool start_scene
+---
+bool result

@@ -2,6 +2,7 @@
 #define ROS_SERVER_H
 
 #include <ros/ros.h>
+// #include <string>
 
 #include <std_msgs/Int32.h>
 #include <std_msgs/String.h>
@@ -14,10 +15,12 @@
 #include "vrep_plugin_server/AddForce.h"
 #include "vrep_plugin_server/AddForceTorque.h"
 #include "vrep_plugin_server/IsSceneStatic.h"
+#include "vrep_plugin_server/ResetScene.h"
 
 #define WORLD_FRAME 	-1
 #define MAX_SIMS_COUNT	1
-#define SCENE_PATH		"scenes/rad_tabletop.ttt"
+#define SCENE_PATH			"scenes/rad_tabletop.ttt"
+#define DEF_SETTINGS_PATH	"/home/daniel/scene.config"
 
 class ROSServer {
   public:
@@ -42,6 +45,9 @@ class ROSServer {
 	sensor_msgs::CameraInfo CreateCameraInfo(int width, int height);
 
 	void streamAllData();
+	bool readFileToString(const std::string file, std::vector<std::string>& data);
+
+	bool parseInstructions(const std::vector<std::string>& instr);
 
 	bool isSceneStatic(float max_speed = 0.1f);
 	std::vector<int> getShapes();
@@ -60,6 +66,9 @@ class ROSServer {
 	bool is_scene_static_callback(
 	    vrep_plugin_server::IsSceneStatic::Request& request,
 	    vrep_plugin_server::IsSceneStatic::Response& response);
+	bool reset_scene_callback(
+	    vrep_plugin_server::ResetScene::Request& request,
+	    vrep_plugin_server::ResetScene::Response& response);
 
 	// Data
 	ros::NodeHandle* node;
@@ -75,6 +84,7 @@ class ROSServer {
 	ros::ServiceServer add_force_service;
 	ros::ServiceServer add_force_torque_service;
 	ros::ServiceServer is_scene_static_service;
+	ros::ServiceServer reset_scene_service;
 
 	ros::Timer heartbeat_timer;
 
