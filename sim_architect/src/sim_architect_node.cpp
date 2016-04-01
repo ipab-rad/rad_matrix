@@ -447,6 +447,7 @@ bool eval_force_torque_callback(
     std::mutex data_mutex;
     int id = 0;
     res.poses = std::vector<geometry_msgs::PoseArray>(sims.size());
+    res.wrench = std::vector<geometry_msgs::Wrench>(sims.size());
     for (auto& sim : sims) {
         ts.push_back(
             std::thread([sim, &all_ok, &data_mutex, &poses, &req, &res]
@@ -478,7 +479,22 @@ bool eval_force_torque_callback(
             }
             ROS_INFO_STREAM("simRosGetObjectHandle: success");
 
+            // Get handle for object with added force torue
+            int aft_handle = -1;
+            handle_msg.request.objectName = req.object_name;
+            if (!ros::service::call(sim.first + "/simRosGetObjectHandle", handle_msg)) {
+                ROS_WARN_STREAM("Cannot get handle of object " << req.object_name <<
+                                " to apply forceTorque at " << sim.first);
+                return;
+            } else {
+                aft_handle = handle_msg.response.handle;
+            }
+
             // Add forceTorque - id is 'i'
+            if (req.wrench.size() < i) {
+                ROS_INFO_STREAM("No wrench was given to this simulation.");
+                return;
+            }
             switch (req.distribution_type) {
                 case (sim_architect::EvalForceTorque::Request::UNIFORM): {
                     std::uniform_real_distribution<double> distr(
@@ -487,8 +503,9 @@ bool eval_force_torque_callback(
                     //ROS_INFO_STREAM("Created a noise distribution" << req.wrench[i].force);
                     addNoiseV3(req.wrench[i].force, distr);
                     //ROS_INFO_STREAM("Added to force");
-                    addNoiseV3(req.wrench[i].torque, distr);
+                    // addNoiseV3(req.wrench[i].torque, distr);
                     //ROS_INFO_STREAM("Added to torque");
+                    ROS_WARN_STREAM("Not applying any noise on TORQUE.");
                     break;
                 }
                 case (sim_architect::EvalForceTorque::Request::GAUSSIAN): {
@@ -496,7 +513,8 @@ bool eval_force_torque_callback(
                         req.params[sim_architect::EvalForceTorque::Request::GAUSSIAN_MEAN],
                         req.params[sim_architect::EvalForceTorque::Request::GAUSSIAN_VAR]);
                     addNoiseV3(req.wrench[i].force, distr);
-                    addNoiseV3(req.wrench[i].torque, distr);
+                    // addNoiseV3(req.wrench[i].torque, distr);
+                    ROS_WARN_STREAM("Not applying any noise on TORQUE.");
                     break;
                 }
                 default:
@@ -506,17 +524,18 @@ bool eval_force_torque_callback(
             ROS_INFO_STREAM("Adding noise: success");
 
             vrep_plugin_server::AddForceTorque force_t_msg;
-            force_t_msg.request.handle = req.handle;
+            force_t_msg.request.handle = aft_handle;
             force_t_msg.request.wrench = req.wrench[i];
             if (!ros::service::call(sim.first + "/addForceTorque", force_t_msg)) {
                 ROS_WARN_STREAM("Cannot add force torque!");
                 return;
             }
+            res.wrench[i] = force_t_msg.request.wrench;
             ROS_INFO_STREAM("AddForceTorque: success");
 
             // Wait while scene(i) is static
             vrep_plugin_server::IsSceneStatic static_msg;
-            static_msg.request.max_speed = 0.01;
+            static_msg.request.max_speed = 0.001;
             while (ros::service::call(sim.first + "/isSceneStatic", static_msg) && !static_msg.response.is_static) {
                 ros::Duration(0.005).sleep(); // 5 ms.
                 ROS_INFO_STREAM("Scene still not static!");

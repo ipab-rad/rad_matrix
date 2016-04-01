@@ -328,6 +328,7 @@ bool ROSServer::parseInstructions(const std::vector<std::string>& instr) {
             ROS_WARN_STREAM("Cannot create shape");
             return false;
         }
+        ROS_INFO_STREAM("Handle is: " << handle);
 
         if (simSetObjectName(handle, name.c_str()) == -1) {
             ROS_WARN("Cannot set name!");

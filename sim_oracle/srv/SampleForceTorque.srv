@@ -1,0 +1,5 @@
+int64 burnout
+int64 samples
+---
+float64[] likelihood
+geometry_msgs/Wrench[] wrench

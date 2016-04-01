@@ -5,7 +5,7 @@
 
 string reset_scene_file
 
-int64 handle
+string object_name
 geometry_msgs/Wrench[] wrench
 
 # All distribution types
@@ -26,3 +26,4 @@ uint8 GAUSSIAN_VAR=1
 string[] names
 ---
 geometry_msgs/PoseArray[] poses
+geometry_msgs/Wrench[] wrench
