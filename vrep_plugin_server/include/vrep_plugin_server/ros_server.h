@@ -16,6 +16,7 @@
 #include "vrep_plugin_server/AddForceTorque.h"
 #include "vrep_plugin_server/IsSceneStatic.h"
 #include "vrep_plugin_server/ResetScene.h"
+#include "vrep_plugin_server/PushObject.h"
 
 #define WORLD_FRAME 	-1
 #define MAX_SIMS_COUNT	1
@@ -69,6 +70,9 @@ class ROSServer {
 	bool reset_scene_callback(
 	    vrep_plugin_server::ResetScene::Request& request,
 	    vrep_plugin_server::ResetScene::Response& response);
+	bool push_object_callback(
+	    vrep_plugin_server::PushObject::Request& request,
+	    vrep_plugin_server::PushObject::Response& response);
 
 	// Data
 	ros::NodeHandle* node;
@@ -85,12 +89,16 @@ class ROSServer {
 	ros::ServiceServer add_force_torque_service;
 	ros::ServiceServer is_scene_static_service;
 	ros::ServiceServer reset_scene_service;
+	ros::ServiceServer push_object_service;
 
 	ros::Timer heartbeat_timer;
 
 	// Handles
 	int simcam_handle;
 	int cube_handle;
+
+	int push_end_iters;
+	vrep_plugin_server::AddForceTorque::Request wrench_push_req;
 
 	unsigned int sim_iter;
 	int sim_ID;

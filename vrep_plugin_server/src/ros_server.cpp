@@ -56,6 +56,10 @@ bool ROSServer::initialize() {
     reset_scene_service =
         node->advertiseService("resetScene",
                                &ROSServer::reset_scene_callback, this);
+
+    push_object_service =
+        node->advertiseService("pushObject",
+                               &ROSServer::push_object_callback, this);
     ROS_INFO_STREAM("Finished with server reconf.");
 
 
@@ -275,6 +279,18 @@ bool ROSServer::reset_scene_callback(
     return true;
 }
 
+bool ROSServer::push_object_callback(
+    vrep_plugin_server::PushObject::Request& request,
+    vrep_plugin_server::PushObject::Response& response) {
+    push_end_iters = request.duration / simGetSimulationTimeStep();
+
+    wrench_push_req.wrench = request.wrench_at_iter;
+    wrench_push_req.handle = request.handle;
+
+    response.result = push_end_iters;
+    return true;
+}
+
 bool ROSServer::parseInstructions(const std::vector<std::string>& instr) {
     // Reset the dynamics of the scene so far (won't move objects to initial position)
     if (simResetDynamicObject(sim_handle_all) == -1) {
@@ -417,6 +433,18 @@ void ROSServer::mainScriptAboutToBeCalled() {
         static sensor_msgs::CameraInfo ci;
         getImageMessage(frame, ci);
         cam_pub.publish(frame, ci);
+    }
+
+    // Apply continious force on cube
+    // TODO: TEST this works
+    if (push_end_iters > 0) {
+        vrep_plugin_server::AddForceTorque::Response resp;
+        bool ok = add_force_torque_callback(wrench_push_req, resp);
+        if (!ok) {
+            ROS_WARN_STREAM("Cannot apply push iteration at " <<
+                            push_end_iters << " left.");
+        }
+        --push_end_iters;
     }
 }
 

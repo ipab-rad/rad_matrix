@@ -22,6 +22,7 @@ add_service_files(
   AddForceTorque.srv
   IsSceneStatic.srv
   ResetScene.srv
+  PushObject.srv
 )
 
 generate_messages(

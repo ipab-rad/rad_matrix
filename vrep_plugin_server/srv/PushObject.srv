@@ -1,0 +1,14 @@
+# Apply a force torque at every time step for a specified amount of type.
+# The profile of the applied force can change.
+
+int64 handle
+geometry_msgs/Wrench wrench_at_iter
+float64 duration
+
+#int32 BLOCK=0
+#int32 RAMP=1
+#int32 TRIANGLE=2
+
+#int32 profile
+---
+int32 result
