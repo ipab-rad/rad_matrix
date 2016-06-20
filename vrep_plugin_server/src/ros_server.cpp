@@ -340,6 +340,7 @@ bool ROSServer::parseInstructions(const std::vector<std::string>& instr) {
         options |= 1 << 1; // Edges visible
         options |= 1 << 3; // Shape is respondable
         float dims[] = {height, width, depth};
+
         handle =
             simCreatePureShape(
                 shape - 1, // Currently ROS shapes are offset by 1 from V-Rep ones
