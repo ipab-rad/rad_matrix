@@ -298,6 +298,11 @@ bool ROSServer::parseInstructions(const std::vector<std::string>& instr) {
         return false;
     }
 
+    if (instr.empty()) {
+        ROS_WARN_STREAM("No instructions to load...");
+        return false;
+    }
+
     for (auto i : instr) {
         size_t arg_op = i.find("[");
         size_t arg_end = i.find("]");

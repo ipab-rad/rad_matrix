@@ -51,6 +51,7 @@ ros::ServiceServer add_force_torque_service;
 ros::ServiceServer get_object_pose_service;
 ros::ServiceServer get_simulation_names_service;
 ros::ServiceServer eval_force_torque_service;
+ros::ServiceServer reset_scenes_service;
 
 // Random variation data
 std::random_device rd;
@@ -462,7 +463,8 @@ bool eval_force_torque_callback(
                 return;
             }
 
-            ROS_INFO_STREAM("ResetScene: success");
+            ROS_INFO_STREAM("ResetScene for " + sim.first + ": " +
+            ((reset_msg.response.result) ? "success" : "fail"));
 
             // Convert names to handles. Keep order.
             vrep_common::simRosGetObjectHandle handle_msg;
@@ -574,6 +576,42 @@ bool eval_force_torque_callback(
     return true;
 }
 
+bool reset_scene_callback(vrep_plugin_server::ResetScene::Request& req,
+                          vrep_plugin_server::ResetScene::Response& res) {
+    ros::WallTime begin = ros::WallTime::now();
+    int all_ok = 0;
+    std::vector<std::thread> ts;
+    std::mutex data_mutex;
+    int id = 0;
+    vrep_plugin_server::ResetScene reset_msg;
+    reset_msg.request = req; // Copy request msg
+    for (auto& sim : sims) {
+        ts.push_back(
+            std::thread([sim, &all_ok, &data_mutex, &reset_msg, &req, &res]
+        (int i) ->void {
+            // ResetScene
+            if (!ros::service::call(sim.first + "/resetScene", reset_msg)) {
+                ROS_WARN_STREAM("Cannot reset scenes for " << sim.first);
+                return;
+            }
+            data_mutex.lock();
+            all_ok += (reset_msg.response.result ? 1 : 0);
+            data_mutex.unlock();
+            ROS_INFO_STREAM("ResetScene for " + sim.first + ": " +
+            ((reset_msg.response.result) ? "success" : "fail"));
+        }, id++));
+    }
+
+    std::for_each(ts.begin(), ts.end(), [](std::thread & t) {
+        t.join();
+    });
+
+    res.result = (all_ok == sims.size());
+    ROS_INFO_STREAM("[ResetScene] Time elapsed: " <<
+                    ros::WallTime::now() - begin);
+    return true;
+}
+
 void simulationCleanUpTimerCallback(const ros::TimerEvent& e) {
     for (auto it = sims.cbegin(); it != sims.cend();) {
         if ((*it).second < e.last_real) {
@@ -617,6 +655,8 @@ int main(int argc, char** argv) {
                                                            get_simulation_names_callback);
     eval_force_torque_service = node->advertiseService("evalForceTorque",
                                                        eval_force_torque_callback);
+    reset_scenes_service = node->advertiseService("resetScene",
+                                                  reset_scene_callback);
     ROS_INFO_STREAM("All top level services and topics advertised!");
 
     ros::Timer sim_cleanup_timer =
