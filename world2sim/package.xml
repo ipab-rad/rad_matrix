@@ -4,7 +4,7 @@
   <version>0.0.0</version>
   <description>The world2sim package</description>
 
-  <!-- One maintainer tag required, multiple allowed, one person per tag --> 
+  <!-- One maintainer tag required, multiple allowed, one person per tag -->
   <!-- Example:  -->
   <!-- <maintainer email="jane.doe@example.com">Jane Doe</maintainer> -->
   <maintainer email="daniel@todo.todo">daniel</maintainer>
@@ -44,10 +44,14 @@
   <build_depend>roscpp</build_depend>
   <build_depend>sim_architect</build_depend>
   <build_depend>sim_oracle</build_depend>
+  <build_depend>tf2_ros</build_depend>
+  <build_depend>tf2_sensor_msgs</build_depend>
   <run_depend>pcl_ros</run_depend>
   <run_depend>roscpp</run_depend>
   <run_depend>sim_architect</run_depend>
   <run_depend>sim_oracle</run_depend>
+  <run_depend>tf2_ros</run_depend>
+  <run_depend>tf2_sensor_msgs</run_depend>
 
 
   <!-- The export tag contains other, unspecified, tags -->

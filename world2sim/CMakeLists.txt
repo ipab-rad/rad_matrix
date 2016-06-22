@@ -9,6 +9,8 @@ find_package(catkin REQUIRED COMPONENTS
   roscpp
   sim_architect
   sim_oracle
+  tf2_ros
+  tf2_sensor_msgs
 )
 
 ## System dependencies are found with CMake's conventions
@@ -115,8 +117,8 @@ catkin_package(
 
 set(CMAKE_CXX_COMPILER "clang++-3.6")
 set(CMAKE_C_COMPILER "clang-3.6")
-set(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} -std=c++11 -Wall -Wno-deprecated-register -O2 -Wno-overloaded-virtual" )
-
+set(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} -std=c++11 -Wall -O2" )
+# -Wno-overloaded-virtual
 
 ## Specify additional locations of header files
 ## Your package locations should be listed before other locations
