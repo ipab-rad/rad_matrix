@@ -288,6 +288,8 @@ bool ROSServer::push_object_callback(
     wrench_push_req.handle = request.handle;
 
     response.result = push_end_iters;
+    ROS_INFO_STREAM("[PushObjectRequest] Will continue pushing for " <<
+                    push_end_iters << " iterations.");
     return true;
 }
 

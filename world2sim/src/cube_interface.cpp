@@ -237,43 +237,16 @@ void new_cloud_2_process(sensor_msgs::PointCloud2::Ptr& msg) {
 		ROS_INFO_STREAM("Converted to pcl");
 	} else {
 		ROS_WARN("Cloud has an empty pointer!");
+		return;
 	}
 
 	// Find bounding box
-	// do pcl and axis align
 	double height = 0.025;
 	double width  = 0.025; // m
 	double depth  = 0.075;
 	Eigen::Quaternionf boxQuaternion;
 	Eigen::Vector3f boxTransform;
 	computeBoundingBox(cloud, height, width, depth, boxQuaternion, boxTransform);
-	////////
-	// Untested
-	// Eigen::Vector4f centroid;
-	// Eigen::Matrix3f evecs;
-	// Eigen::Vector3f evals;
-
-	// // Table is the pointcloud of the table only.
-	// pcl::compute3DCentroid(*cloud, centroid);
-	// computePrincipalAxis(*cloud, centroid, evecs, evals);
-	// ROS_INFO_STREAM("centroid: " << centroid);
-
-	// Eigen::Vector3f vec;
-
-	// vec << evecs.col(0);
-	// createArrowMarker(vec, 1, evals[0], centroid);
-
-	// vec << evecs.col(1);
-	// createArrowMarker(vec, 2, evals[1], centroid);
-
-	// vec << evecs.col(2);
-	// createArrowMarker(vec, 3, evals[2], centroid);
-	///////////////////
-
-	// For testing
-	// double height = 0.025;
-	// double width  = 0.025; // m
-	// double depth  = 0.075;
 
 	const int cube_height = std::round(height / cube_size);
 	const int cube_width  = std::round(width  / cube_size);

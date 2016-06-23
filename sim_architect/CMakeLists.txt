@@ -9,6 +9,7 @@ find_package(catkin REQUIRED COMPONENTS
   roscpp
   sensor_msgs
   std_msgs
+  std_srvs
   vrep_common
   vrep_plugin_server
   message_generation
@@ -115,8 +116,10 @@ catkin_package(
 ## Build ##
 ###########
 
+set(CMAKE_CXX_COMPILER "clang++-3.6")
+set(CMAKE_C_COMPILER "clang-3.6")
 # Use c++11
-set(CMAKE_CXX_FLAGS "-std=c++11 ${CMAKE_CXX_FLAGS}")
+set(CMAKE_CXX_FLAGS "-std=c++11 ${CMAKE_CXX_FLAGS} -O2 -Wno-deprecated-register")
 
 
 ## Specify additional locations of header files
