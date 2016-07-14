@@ -2,7 +2,6 @@
 #define ROS_SERVER_H
 
 #include <ros/ros.h>
-// #include <string>
 
 #include <std_msgs/Int32.h>
 #include <std_msgs/String.h>
@@ -17,6 +16,7 @@
 #include "vrep_plugin_server/IsSceneStatic.h"
 #include "vrep_plugin_server/ResetScene.h"
 #include "vrep_plugin_server/PushObject.h"
+#include "vrep_plugin_server/AreCubesSplit.h"
 
 #define WORLD_FRAME 	-1
 #define MAX_SIMS_COUNT	1
@@ -73,7 +73,9 @@ class ROSServer {
 	bool push_object_callback(
 	    vrep_plugin_server::PushObject::Request& request,
 	    vrep_plugin_server::PushObject::Response& response);
-
+	bool are_cubes_split_callback(
+	    vrep_plugin_server::AreCubesSplit::Request& req,
+	    vrep_plugin_server::AreCubesSplit::Response& res);
 	// Data
 	ros::NodeHandle* node;
 
@@ -90,6 +92,8 @@ class ROSServer {
 	ros::ServiceServer is_scene_static_service;
 	ros::ServiceServer reset_scene_service;
 	ros::ServiceServer push_object_service;
+	ros::ServiceServer are_cubes_split_service;
+
 
 	ros::Timer heartbeat_timer;
 

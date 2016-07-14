@@ -11,12 +11,14 @@ find_package(catkin REQUIRED COMPONENTS
   sim_oracle
   tf2_ros
   tf2_sensor_msgs
+  std_srvs
 )
 
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
 
 
+find_package(OpenCV REQUIRED)
 find_package(PCL REQUIRED)
 
 ## Uncomment this if the package has a setup.py. This macro ensures
@@ -125,6 +127,7 @@ set(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} -std=c++11 -Wall -O2" )
 # include_directories(include)
 include_directories(
   ${catkin_INCLUDE_DIRS}
+  ${OpenCV_INCLUDE_DIRS}
 )
 
 ## Declare a C++ library
@@ -151,6 +154,7 @@ add_executable(cube_interface_node src/cube_interface.cpp)
 target_link_libraries(cube_interface_node
     ${catkin_LIBRARIES}
     ${PCL_LIBRARIES}
+    ${OpenCV_LIBRARIES}
 )
 #############
 ## Install ##

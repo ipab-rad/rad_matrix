@@ -56,10 +56,12 @@ bool ROSServer::initialize() {
     reset_scene_service =
         node->advertiseService("resetScene",
                                &ROSServer::reset_scene_callback, this);
-
     push_object_service =
         node->advertiseService("pushObject",
                                &ROSServer::push_object_callback, this);
+    are_cubes_split_service =
+        node->advertiseService("areCubesSplit",
+                               &ROSServer::are_cubes_split_callback, this);
     ROS_INFO_STREAM("Finished with server reconf.");
 
 
@@ -554,4 +556,42 @@ sensor_msgs::CameraInfo ROSServer::CreateCameraInfo(int width, int height) {
     ci.distortion_model = sensor_msgs::distortion_models::PLUMB_BOB;
 
     return ci;
+}
+
+double dist_vec(float* a, float* b) {
+    return std::sqrt(std::pow(a[0] - b[0], 2) +
+                     std::pow(a[1] - b[1], 2) +
+                     std::pow(a[2] - b[2], 2));
+}
+
+bool ROSServer::are_cubes_split_callback(
+    vrep_plugin_server::AreCubesSplit::Request& req,
+    vrep_plugin_server::AreCubesSplit::Response& res) {
+    std::vector<std::array<float, 3>> positions;
+    for (int i = 0; i < req.cube_count; ++i) {
+        std::string name = "cube" + std::to_string(i);
+        int handle = simGetObjectHandle(name.c_str());
+        if (handle == -1) {
+            // Smalelr number of cubes, break here
+            break;
+        }
+        // All is ok
+        std::array<float, 3> position;
+        simGetObjectPosition(handle, -1, position.data());
+        positions.push_back(position);
+    }
+
+    bool split = true;
+    for (int i = 0; i < positions.size(); ++i) {
+        for (int j = 0; (j < positions.size()) && split; ++j) {
+            if ((i != j) &&
+                    (dist_vec(positions[i].data(), positions[j].data()) < req.min_distance)) {
+                split = false;
+                break;
+            }
+        }
+    }
+
+    res.are_split = split;
+    return true;
 }

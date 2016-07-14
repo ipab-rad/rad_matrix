@@ -9,6 +9,7 @@ find_package(catkin REQUIRED COMPONENTS
   message_generation
   shape_msgs
   std_msgs
+  std_srvs
 )
 
 find_package(Eigen3 REQUIRED)
@@ -23,6 +24,7 @@ add_service_files(
   IsSceneStatic.srv
   ResetScene.srv
   PushObject.srv
+  AreCubesSplit.srv
 )
 
 generate_messages(

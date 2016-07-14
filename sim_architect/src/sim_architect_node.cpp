@@ -20,6 +20,7 @@
 #include <vrep_plugin_server/PushObject.h>
 #include <vrep_plugin_server/IsSceneStatic.h>
 #include <vrep_plugin_server/ResetScene.h>
+#include <vrep_plugin_server/AreCubesSplit.h>
 #include <vrep_common/simRosSetObjectPose.h>
 #include <vrep_common/simRosGetObjectPose.h>
 #include <vrep_common/simRosStopSimulation.h>
@@ -46,8 +47,8 @@ std::map<std::string, ros::Time> sims;
 // Service objects
 ros::ServiceServer get_number_of_simulations_service;
 ros::ServiceServer set_object_pose_service;
-ros::ServiceServer stop_simulation_service;
-ros::ServiceServer start_simulation_service;
+ros::ServiceServer stop_simulations_service;
+ros::ServiceServer start_simulations_service;
 ros::ServiceServer are_scenes_static_service;
 ros::ServiceServer add_force_service;
 ros::ServiceServer push_object_service;
@@ -59,6 +60,8 @@ ros::ServiceServer reset_scenes_service;
 ros::ServiceServer action_x_service;
 ros::ServiceServer action_y_service;
 ros::ServiceServer action_z_service;
+ros::ServiceServer split_service;
+ros::ServiceServer success_action_x_service;
 
 // Random variation data
 std::random_device rd;
@@ -159,8 +162,8 @@ bool set_object_pose_callback(
     return true;
 }
 
-bool stop_simulation_callback(vrep_common::simRosStopSimulation::Request& req,
-                              vrep_common::simRosStopSimulation::Response& res) {
+bool stop_simulations_callback(vrep_common::simRosStopSimulation::Request& req,
+                               vrep_common::simRosStopSimulation::Response& res) {
     ros::WallTime begin = ros::WallTime::now();
     int all_ok = 0;
     std::vector<std::thread> ts;
@@ -183,14 +186,15 @@ bool stop_simulation_callback(vrep_common::simRosStopSimulation::Request& req,
     }
     std::for_each(ts.begin(), ts.end(), [](std::thread & t) { t.join(); });
 
-    ROS_INFO_STREAM("[simRosStopSimulation] Time elapsed: " <<
+    ROS_INFO_STREAM("[simRosStopSimulations] Time elapsed: " <<
                     ros::WallTime::now() - begin);
     res.result = all_ok;
     return true;
 }
 
-bool start_simulation_callback(vrep_common::simRosStartSimulation::Request& req,
-                               vrep_common::simRosStartSimulation::Response& res) {
+bool start_simulations_callback(vrep_common::simRosStartSimulation::Request&
+                                req,
+                                vrep_common::simRosStartSimulation::Response& res) {
     ros::WallTime begin = ros::WallTime::now();
     int all_ok = 0;
     std::vector<std::thread> ts;
@@ -213,7 +217,7 @@ bool start_simulation_callback(vrep_common::simRosStartSimulation::Request& req,
     }
     std::for_each(ts.begin(), ts.end(), [](std::thread & t) { t.join(); });
 
-    ROS_INFO_STREAM("[simRosStartSimulation] Time elapsed: " <<
+    ROS_INFO_STREAM("[simRosStartSimulations] Time elapsed: " <<
                     ros::WallTime::now() - begin);
     res.result = all_ok;
     return true;
@@ -231,15 +235,14 @@ bool are_scenes_static_callback(
     for (auto& sim : sims) {
         ts.push_back(std::thread([sim, &all_ok, &all_ok_mutex]
         (vrep_plugin_server::IsSceneStatic nmsg) ->void {
-            ROS_INFO_STREAM("Checking scene static on: " << sim.first);
+            ROS_DEBUG_STREAM("Checking scene static on: " << sim.first);
             if (ros::service::call(sim.first + "/isSceneStatic", nmsg) &&
             (nmsg.response.is_static)) {
                 all_ok_mutex.lock();
                 ++all_ok;
                 all_ok_mutex.unlock();
             } else {
-                ROS_WARN_STREAM("Scene is not static (" << sim.first
-                << " [" << sim.second << "])");
+                ROS_INFO_STREAM("Scene is not static - " << sim.first);
             }
         }, msg));
     }
@@ -521,7 +524,7 @@ bool eval_force_torque_callback(
             }
             ROS_INFO_STREAM("simRosGetObjectHandle: success");
 
-            // Get handle for object with added force torue
+            // Get handle for object with added force torque
             int aft_handle = -1;
             handle_msg.request.objectName = req.object_name;
             if (!ros::service::call(sim.first + "/simRosGetObjectHandle", handle_msg)) {
@@ -614,8 +617,8 @@ bool eval_force_torque_callback(
     return true;
 }
 
-bool reset_scene_callback(vrep_plugin_server::ResetScene::Request& req,
-                          vrep_plugin_server::ResetScene::Response& res) {
+bool reset_scenes_callback(vrep_plugin_server::ResetScene::Request& req,
+                           vrep_plugin_server::ResetScene::Response& res) {
     ros::WallTime begin = ros::WallTime::now();
     int all_ok = 0;
     std::vector<std::thread> ts;
@@ -642,7 +645,7 @@ bool reset_scene_callback(vrep_plugin_server::ResetScene::Request& req,
     std::for_each(ts.begin(), ts.end(), [](std::thread & t) { t.join(); });
 
     res.result = (all_ok == sims.size());
-    ROS_INFO_STREAM("[ResetScene] Time elapsed: " <<
+    ROS_INFO_STREAM("[ResetScenes] Time elapsed: " <<
                     ros::WallTime::now() - begin);
     return true;
 }
@@ -651,23 +654,28 @@ bool execute_action_on_sims(vrep_plugin_server::PushObject& rmsg,
                             std_srvs::Trigger::Request& req,
                             std_srvs::Trigger::Response& res) {
     ros::WallTime begin = ros::WallTime::now();
-    std::string obj_name = "cube1";
+    int cube_id = 1;
     int all_ok = 0;
     std::vector<std::thread> ts;
     std::mutex all_ok_mutex;
 
     for (auto& sim : sims) {
-        ts.push_back(std::thread([sim, &all_ok, &all_ok_mutex, &obj_name]
+        ts.push_back(std::thread([sim, &all_ok, &all_ok_mutex, &cube_id]
         (vrep_plugin_server::PushObject nmsg) ->void {
             // Get handle
             vrep_common::simRosGetObjectHandle handle_msg;
-            handle_msg.request.objectName = obj_name;
-            if (!ros::service::call(sim.first + "/simRosGetObjectHandle", handle_msg)) {
-                ROS_WARN_STREAM("Cannot get handle of " << obj_name << " at " << sim.first);
-                return;
-            } else {
-                nmsg.request.handle = handle_msg.response.handle;
-            }
+            do{
+                if (cube_id < 0) break;
+                handle_msg.request.objectName = "cube" + std::to_string(cube_id);
+                if (!ros::service::call(sim.first + "/simRosGetObjectHandle", handle_msg) &&
+                handle_msg.response.handle != -1) {
+                    ROS_WARN_STREAM("Cannot get handle of cube" << cube_id << " at " << sim.first);
+                    --cube_id;
+                    ROS_WARN_STREAM("Attempting with cube" << cube_id);
+                } else {
+                    nmsg.request.handle = handle_msg.response.handle;
+                }
+            } while (handle_msg.response.handle != -1);
 
             ROS_DEBUG_STREAM("[Action_] MSG: " << nmsg.request);
 
@@ -678,7 +686,7 @@ bool execute_action_on_sims(vrep_plugin_server::PushObject& rmsg,
                 ++all_ok;
                 all_ok_mutex.unlock();
             } else {
-                ROS_WARN_STREAM("Cannot add force/torque to " << sim.first);
+                ROS_WARN_STREAM("Cannot pushObject on " << sim.first);
             }
         }, rmsg));
     }
@@ -696,8 +704,8 @@ bool execute_action_on_sims(vrep_plugin_server::PushObject& rmsg,
 bool action_x_callback(std_srvs::Trigger::Request& req,
                        std_srvs::Trigger::Response& res) {
     vrep_plugin_server::PushObject msg;
-    msg.request.wrench_at_iter.force.x = 20.0;
-    msg.request.duration = 0.5;
+    msg.request.wrench_at_iter.force.x = 0.3;
+    msg.request.duration = 0.05;
 
     execute_action_on_sims(msg, req, res);
 
@@ -707,8 +715,8 @@ bool action_x_callback(std_srvs::Trigger::Request& req,
 bool action_y_callback(std_srvs::Trigger::Request& req,
                        std_srvs::Trigger::Response& res) {
     vrep_plugin_server::PushObject msg;
-    msg.request.wrench_at_iter.force.y = 20.0;
-    msg.request.duration = 0.5;
+    msg.request.wrench_at_iter.force.y = 0.35;
+    msg.request.duration = 0.08;
 
     execute_action_on_sims(msg, req, res);
 
@@ -717,13 +725,108 @@ bool action_y_callback(std_srvs::Trigger::Request& req,
 bool action_z_callback(std_srvs::Trigger::Request& req,
                        std_srvs::Trigger::Response& res) {
     vrep_plugin_server::PushObject msg;
-    msg.request.wrench_at_iter.force.z = 20.0;
-    msg.request.duration = 0.5;
+    msg.request.wrench_at_iter.force.z = 0.4;
+    msg.request.duration = 0.1;
 
     execute_action_on_sims(msg, req, res);
 
     return true;
 }
+
+
+float all_split_cubes(vrep_plugin_server::AreCubesSplit::Request& req) {
+    ros::WallTime begin = ros::WallTime::now();
+    int MAX_CUBE_COUNT = req.cube_count;
+    double DIST_THR = req.min_distance;
+
+    vrep_plugin_server::AreCubesSplit split_msg;
+    split_msg.request.min_distance = DIST_THR;
+    split_msg.request.cube_count = MAX_CUBE_COUNT;
+
+    int all_ok = 0;
+    std::vector<std::thread> ts;
+    std::mutex all_ok_mutex;
+
+    for (auto& sim : sims) {
+        ts.push_back(std::thread([sim, &all_ok, &all_ok_mutex]
+        (vrep_plugin_server::AreCubesSplit s_msg) ->void {
+            if (ros::service::call(sim.first + "/areCubesSplit", s_msg)) {
+                if (s_msg.response.are_split) {
+                    all_ok_mutex.lock();
+                    ++all_ok;
+                    all_ok_mutex.unlock();
+                } else {
+                    ROS_INFO_STREAM("Cubes not split on: " << sim.first);
+                }
+            } else {
+                ROS_WARN_STREAM("Cannot check cubes static-ness on " << sim.first);
+            }
+        }, split_msg));
+    }
+
+    std::for_each(ts.begin(), ts.end(), [](std::thread & t) { t.join(); });
+    ROS_INFO_STREAM("[AreCubesSplit] Time elapsed: " <<
+                    ros::WallTime::now() - begin);
+    return float(all_ok) / sims.size();
+}
+
+bool split_callback(vrep_plugin_server::AreCubesSplit::Request& req,
+                    vrep_plugin_server::AreCubesSplit::Response& res) {
+    float c = all_split_cubes(req);
+
+    res.are_split = (c > .9);
+    res.ratio = c;
+
+    return true;
+}
+
+bool halt_until_scenes_static() {
+    vrep_plugin_server::IsSceneStatic scene_static;
+    scene_static.request.max_speed = 0.001;
+    int scale = 1;
+    do {
+        ros::Duration(log(scale * scale) * 0.05).sleep();
+        are_scenes_static_callback(scene_static.request, scene_static.response);
+        ++scale;
+    } while (!scene_static.response.is_static);
+
+    return scene_static.response.is_static;
+}
+
+bool success_action_x_callback(std_srvs::Trigger::Request& req,
+                               std_srvs::Trigger::Response& res) {
+    ros::WallTime begin = ros::WallTime::now();
+    halt_until_scenes_static();
+    // Trigger the action
+    std_srvs::Trigger action_trig;
+    action_x_callback(action_trig.request, action_trig.response);
+
+    // Wait until scene is static
+    halt_until_scenes_static();
+
+    // Check if cubes are split
+    if (action_trig.response.success) {
+        vrep_plugin_server::AreCubesSplit split_trig;
+        split_trig.request.min_distance = 0.026; //2.6cm
+        split_trig.request.cube_count = 3;
+
+        split_callback(split_trig.request, split_trig.response);
+
+        ROS_INFO_STREAM("Action X: " <<
+                        ((split_trig.response.are_split) ? "success" : "fail") <<
+                        " with success rate of " << split_trig.response.ratio);
+        res.success = split_trig.response.are_split;
+        res.message = "Success rate of " + std::to_string(split_trig.response.ratio);
+    } else {
+        ROS_WARN_STREAM("Cannot execute action X");
+        res.success = false;
+        res.message = "Cannot execute action X";
+    }
+    ROS_INFO_STREAM("[SuccessActionX] Time elapsed: " <<
+                    ros::WallTime::now() - begin);
+    return true;
+}
+
 
 void simulationCleanUpTimerCallback(const ros::TimerEvent& e) {
     for (auto it = sims.cbegin(); it != sims.cend();) {
@@ -754,10 +857,10 @@ int main(int argc, char** argv) {
                                get_number_of_simulations_callback);
     set_object_pose_service =  node->advertiseService("setObjectPose",
                                                       set_object_pose_callback);
-    stop_simulation_service =  node->advertiseService("stopSimulation",
-                                                      stop_simulation_callback);
-    start_simulation_service =  node->advertiseService("startSimulation",
-                                                       start_simulation_callback);
+    stop_simulations_service =  node->advertiseService("stopSimulations",
+                                                       stop_simulations_callback);
+    start_simulations_service =  node->advertiseService("startSimulations",
+                                                        start_simulations_callback);
     are_scenes_static_service = node->advertiseService("areScenesStatic",
                                                        are_scenes_static_callback);
     add_force_service =  node->advertiseService("addForce",
@@ -772,14 +875,18 @@ int main(int argc, char** argv) {
                                                            get_simulation_names_callback);
     eval_force_torque_service = node->advertiseService("evalForceTorque",
                                                        eval_force_torque_callback);
-    reset_scenes_service = node->advertiseService("resetScene",
-                                                  reset_scene_callback);
+    reset_scenes_service = node->advertiseService("resetScenes",
+                                                  reset_scenes_callback);
     action_x_service = node->advertiseService("action_x",
                                               action_x_callback);
     action_y_service = node->advertiseService("action_y",
                                               action_y_callback);
     action_z_service = node->advertiseService("action_z",
                                               action_z_callback);
+    split_service = node->advertiseService("areCubesSplit",
+                                           split_callback);
+    success_action_x_service = node->advertiseService("success_action_x",
+                                                      success_action_x_callback);
     ROS_INFO_STREAM("All top level services and topics advertised!");
 
     ros::Timer sim_cleanup_timer =

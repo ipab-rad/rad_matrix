@@ -1,0 +1,5 @@
+float32 min_distance
+int32 cube_count
+---
+bool are_split
+float32 ratio # of split simulations
