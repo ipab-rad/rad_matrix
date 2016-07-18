@@ -59,9 +59,6 @@ ros::ServiceServer get_simulation_names_service;
 ros::ServiceServer eval_force_torque_service;
 ros::ServiceServer reset_scenes_service;
 ros::ServiceServer action_A_service;
-ros::ServiceServer action_x_service;
-ros::ServiceServer action_y_service;
-ros::ServiceServer action_z_service;
 ros::ServiceServer split_service;
 ros::ServiceServer success_action_x_service;
 
@@ -711,36 +708,6 @@ bool execute_action_on_sims(vrep_plugin_server::PushObject& rmsg,
     return res.success;
 }
 
-bool action_x_callback(std_srvs::Trigger::Request& req,
-                       std_srvs::Trigger::Response& res) {
-    vrep_plugin_server::PushObject msg;
-    msg.request.force_at_iter.x = 0.3;
-    msg.request.duration = 0.05;
-
-    // execute_action_on_sims(msg, req, res);
-
-    return true;
-}
-
-bool action_y_callback(std_srvs::Trigger::Request& req,
-                       std_srvs::Trigger::Response& res) {
-    vrep_plugin_server::PushObject msg;
-    msg.request.force_at_iter.y = 0.35;
-    msg.request.duration = 0.08;
-
-    // execute_action_on_sims(msg, req, res);
-
-    return true;
-}
-bool action_z_callback(std_srvs::Trigger::Request& req,
-                       std_srvs::Trigger::Response& res) {
-    // vrep_plugin_server::ActionA r;
-
-    // execute_action_on_sims(msg, req, res);
-
-    return true;
-}
-
 bool action_A_callback(vrep_plugin_server::ActionA::Request& req,
                        vrep_plugin_server::ActionA::Response& res) {
     vrep_plugin_server::PushObject msg;
@@ -868,13 +835,6 @@ bool success_action_all_callback(vrep_plugin_server::ActionA::Request& req,
 
 }
 
-// bool success_action_x_callback(std_srvs::Trigger::Request& req,
-//                                std_srvs::Trigger::Response& res) {
-//     return success_action_all_callback(vrep_plugin_server::ActionA::Request::DIR_X,
-//                                        req, res);
-// }
-
-
 void simulationCleanUpTimerCallback(const ros::TimerEvent& e) {
     for (auto it = sims.cbegin(); it != sims.cend();) {
         if ((*it).second < e.last_real) {
@@ -926,12 +886,6 @@ int main(int argc, char** argv) {
                                                   reset_scenes_callback);
     action_A_service = node->advertiseService("action_A",
                                               action_A_callback);
-    action_x_service = node->advertiseService("action_x",
-                                              action_x_callback);
-    action_y_service = node->advertiseService("action_y",
-                                              action_y_callback);
-    action_z_service = node->advertiseService("action_z",
-                                              action_z_callback);
     split_service = node->advertiseService("areCubesSplit",
                                            split_callback);
     success_action_x_service = node->advertiseService("success_action_all",

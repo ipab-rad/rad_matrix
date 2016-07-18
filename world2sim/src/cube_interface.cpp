@@ -173,7 +173,6 @@ bool computeBoundingBox(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud,
 	marker.color.b = 0.0;
 
 	axisMarkers.markers.push_back(marker);
-
 	return true;
 }
 
@@ -206,7 +205,6 @@ bool addCube(Eigen::Quaternionf bboxQuaternion,
 	axisMarkers.markers.push_back(marker);
 	return true;
 }
-
 
 /////
 enum Orientation { UNKNOWN, PLANAR, TOWER };
@@ -269,7 +267,6 @@ std::vector<std::vector<SimCubeType> > get_possible_configs(int height,
 
 			ROS_INFO_STREAM("Copy, so big res has " << res.size() << " elements.");
 		}
-
 	} else if (orient == Orientation::TOWER) {
 		// It is a tower
 		for (int i = 1; i <= height; ++i) {
@@ -303,13 +300,11 @@ std::vector<std::vector<SimCubeType> > get_possible_configs(int height,
 }
 
 /////
-
 void new_cloud_2_process(sensor_msgs::PointCloud2::Ptr& msg) {
 	pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(
 	    new pcl::PointCloud<pcl::PointXYZ>);
 	if (msg != nullptr) {
 		// DO tf2 transform
-		// Untested
 		sensor_msgs::PointCloud2::Ptr cloud_out(new sensor_msgs::PointCloud2);
 		if (world_frame != msg->header.frame_id) {
 			ROS_INFO_STREAM("Looking up tf");
@@ -328,6 +323,7 @@ void new_cloud_2_process(sensor_msgs::PointCloud2::Ptr& msg) {
 		} else {
 			cloud_out = msg;
 		}
+
 		// Convert to pcl
 		pcl::PCLPointCloud2 pcl_pc2;
 		pcl_conversions::toPCL(*cloud_out, pcl_pc2);
@@ -383,14 +379,10 @@ void new_cloud_2_process(sensor_msgs::PointCloud2::Ptr& msg) {
 			instr += std::to_string(configs[i][j].loc.x) + "," +
 			         std::to_string(configs[i][j].loc.y) + "," +
 			         std::to_string(configs[i][j].loc.z + TABLE_OFFSET) + ","; // position
-			// instr += "0, 0, 0, 1,"; // Orientation
 			instr += std::to_string(boxQuaternion.x()) + "," + // Orientation
 			         std::to_string(boxQuaternion.y()) + "," +
 			         std::to_string(boxQuaternion.z()) + "," +
 			         std::to_string(boxQuaternion.w()) + ",";
-			// instr += std::to_string(configs[i][j].height) + "," +
-			//          std::to_string(configs[i][j].width) + "," +
-			//          std::to_string(configs[i][j].depth) + ","; // dimension
 			instr += std::to_string(configs[i][j].depth) + "," +
 			         std::to_string(configs[i][j].width) + "," +
 			         std::to_string(configs[i][j].height) + ","; // dimension
@@ -408,15 +400,11 @@ void new_cloud_2_process(sensor_msgs::PointCloud2::Ptr& msg) {
 			        configs[i][j].height, configs[i][j].width, configs[i][j].depth,
 			        k++);
 		}
-		// ROS_INFO_STREAM("---");
-
 		instr_list.push_back(instrs);
 	}
 
-	return;
 	// Load it in the sims
 	for (int i = 0; i < instr_list.size(); ++i) { // equals configs[i]
-
 		// Test action X
 		for (int dir = -3; dir <= 3; ++dir) {
 			if (dir == 0) continue;
@@ -424,7 +412,7 @@ void new_cloud_2_process(sensor_msgs::PointCloud2::Ptr& msg) {
 				vrep_plugin_server::ActionA act_msg;
 				act_msg.request.cube_id = cube_target;
 				act_msg.request.direction = dir;
-				// make an offset per cube based
+				// make an offset per cube based on dims
 				for (int offset_pos_z = 0;
 				        offset_pos_z < configs[i][cube_target].height / cube_size;
 				        offset_pos_z++) {
@@ -448,7 +436,7 @@ void new_cloud_2_process(sensor_msgs::PointCloud2::Ptr& msg) {
 							                      (configs[i][cube_target].width / cube_size / 2));
 
 							act_msg.request.offset = pos;
-							ROS_INFO_STREAM("Position: " << pos);
+							ROS_DEBUG_STREAM("Position: " << pos);
 
 							// execute all calls
 							// Reset scene
@@ -456,7 +444,7 @@ void new_cloud_2_process(sensor_msgs::PointCloud2::Ptr& msg) {
 							reset_msg.request.instructions = instr_list[i];
 							reset_msg.request.reload_scene = false;
 							reset_msg.request.start_scene = true;
-							ROS_INFO_STREAM("Sending command!");
+							ROS_INFO_STREAM("Sending reset command!");
 							if (!ros::service::call("/sim_architect/resetScenes", reset_msg)) {
 								ROS_ERROR_STREAM("Cannot execute reset scene with instruction: (1):" <<
 								                 reset_msg.request.instructions[0]);
@@ -469,12 +457,10 @@ void new_cloud_2_process(sensor_msgs::PointCloud2::Ptr& msg) {
 							ROS_INFO_STREAM("Result:\n\t\tOption:" << i << " X Split: " <<
 							                ((act_msg.response.success) ? "success" : "fail") << " msg: " <<
 							                act_msg.response.message);
-							// return; // Test for now with only one;
-							ros::Duration(0.005).sleep();
+							// ros::Duration(0.005).sleep();
 						}
 					}
 				}
-
 
 			}
 		}
