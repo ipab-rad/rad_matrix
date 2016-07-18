@@ -21,6 +21,7 @@
 #include <vrep_plugin_server/IsSceneStatic.h>
 #include <vrep_plugin_server/ResetScene.h>
 #include <vrep_plugin_server/AreCubesSplit.h>
+#include <vrep_plugin_server/ActionA.h>
 #include <vrep_common/simRosSetObjectPose.h>
 #include <vrep_common/simRosGetObjectPose.h>
 #include <vrep_common/simRosStopSimulation.h>
@@ -57,6 +58,7 @@ ros::ServiceServer get_object_pose_service;
 ros::ServiceServer get_simulation_names_service;
 ros::ServiceServer eval_force_torque_service;
 ros::ServiceServer reset_scenes_service;
+ros::ServiceServer action_A_service;
 ros::ServiceServer action_x_service;
 ros::ServiceServer action_y_service;
 ros::ServiceServer action_z_service;
@@ -85,6 +87,10 @@ Eigen::Quaterniond RPY2Quaternion(double r, double p, double y) {
 
     Eigen::Quaternion<double> q = rollAngle * yawAngle * pitchAngle;
     return q;
+}
+
+template <typename T> int sgn(T val) {
+    return (T(0) < val) - (val < T(0));
 }
 
 template <class Tv, class Trand>
@@ -246,9 +252,7 @@ bool are_scenes_static_callback(
             }
         }, msg));
     }
-    std::for_each(ts.begin(), ts.end(), [](std::thread & t) {
-        t.join();
-    });
+    std::for_each(ts.begin(), ts.end(), [](std::thread & t) {t.join(); });
     ROS_INFO_STREAM("[AreScenesStatic] Time elapsed: " <<
                     ros::WallTime::now() - begin);
     res.is_static = (all_ok == sims.size());
@@ -299,8 +303,8 @@ bool push_object_callback(
     for (auto& sim : sims) {
         ts.push_back(std::thread([sim, &all_ok, &all_ok_mutex]
         (vrep_plugin_server::PushObject nmsg) ->void {
-            addNoiseV3(nmsg.request.wrench_at_iter.force, NOISE_FORCE);
-            addNoiseV3(nmsg.request.wrench_at_iter.torque, NOISE_TORQUE);
+            addNoiseV3(nmsg.request.force_at_iter, NOISE_FORCE);
+            // addNoiseV3(nmsg.request.wrench_at_iter.torque, NOISE_TORQUE);
 
             if (ros::service::call(sim.first + "/pushObject", nmsg) &&
             (nmsg.response.result != -1)) {
@@ -449,7 +453,7 @@ bool get_object_pose_callback(
             res.pose_covariance.push_back(cov.data()[i]);
         }
     } else {
-        // Cannot calcualte with a single sample
+        // Cannot calculate with a single sample
         res.pose_xyz_variance.x = 0;
         res.pose_xyz_variance.y = 0;
         res.pose_xyz_variance.z = 0;
@@ -596,7 +600,7 @@ bool eval_force_torque_callback(
                 pose_msg.request.handle = handle;
                 pose_msg.request.relativeToObjectHandle = WORLD_FRAME;
                 if (ros::service::call(sim.first + "/simRosGetObjectPose", pose_msg) &&
-                        (pose_msg.response.result != -1) ) {
+                        (pose_msg.response.result != -1)) {
                     data_mutex.lock();
                     res.poses[i].poses[hid] = pose_msg.response.pose.pose;
                     ++all_ok;
@@ -651,50 +655,56 @@ bool reset_scenes_callback(vrep_plugin_server::ResetScene::Request& req,
 }
 
 bool execute_action_on_sims(vrep_plugin_server::PushObject& rmsg,
-                            std_srvs::Trigger::Request& req,
-                            std_srvs::Trigger::Response& res) {
+                            vrep_plugin_server::ActionA::Request& req,
+                            vrep_plugin_server::ActionA::Response& res) {
     ros::WallTime begin = ros::WallTime::now();
-    int cube_id = 1;
     int all_ok = 0;
+    int failed = 0;
     std::vector<std::thread> ts;
     std::mutex all_ok_mutex;
 
     for (auto& sim : sims) {
-        ts.push_back(std::thread([sim, &all_ok, &all_ok_mutex, &cube_id]
-        (vrep_plugin_server::PushObject nmsg) ->void {
+        ts.push_back(std::thread([sim, &all_ok, &all_ok_mutex, &failed]
+        (vrep_plugin_server::PushObject nmsg, int cube_id) ->void {
             // Get handle
             vrep_common::simRosGetObjectHandle handle_msg;
             do{
-                if (cube_id < 0) break;
                 handle_msg.request.objectName = "cube" + std::to_string(cube_id);
-                if (!ros::service::call(sim.first + "/simRosGetObjectHandle", handle_msg) &&
-                handle_msg.response.handle != -1) {
-                    ROS_WARN_STREAM("Cannot get handle of cube" << cube_id << " at " << sim.first);
-                    --cube_id;
-                    ROS_WARN_STREAM("Attempting with cube" << cube_id);
-                } else {
+
+                if (ros::service::call(sim.first + "/simRosGetObjectHandle", handle_msg) &&
+                (handle_msg.response.handle != -1)) {
                     nmsg.request.handle = handle_msg.response.handle;
+                } else {
+                    ROS_WARN_STREAM("Cannot get handle of '" <<
+                    handle_msg.request.objectName << "' at " << sim.first);
+                    all_ok_mutex.lock();
+                    ++failed;
+                    all_ok_mutex.unlock();
+                    return; // The sim cannot perform any action if there are no cubes
                 }
-            } while (handle_msg.response.handle != -1);
+            } while (handle_msg.response.handle == -1);
 
             ROS_DEBUG_STREAM("[Action_] MSG: " << nmsg.request);
 
             // applying push maneuverer
             if (ros::service::call(sim.first + "/pushObject", nmsg) &&
-            (nmsg.response.result > 0) ) {
+            (nmsg.response.result > 0)) {
                 all_ok_mutex.lock();
                 ++all_ok;
                 all_ok_mutex.unlock();
             } else {
                 ROS_WARN_STREAM("Cannot pushObject on " << sim.first);
             }
-        }, rmsg));
+        }, rmsg, req.cube_id));
     }
 
     std::for_each(ts.begin(), ts.end(), [](std::thread & t) { t.join(); });
-    ROS_INFO_STREAM("[Action_] Time elapsed: " <<
-                    ros::WallTime::now() - begin);
+    ROS_INFO_STREAM("[Action_] Time elapsed: " << ros::WallTime::now() - begin);
 
+    if (failed == sims.size()) {
+        ROS_ERROR_STREAM("All simulations failed. Cannot execute service (action_on_sim)!");
+        return false;
+    }
     res.success = (all_ok == sims.size());
     res.message = std::to_string(all_ok);
 
@@ -704,10 +714,10 @@ bool execute_action_on_sims(vrep_plugin_server::PushObject& rmsg,
 bool action_x_callback(std_srvs::Trigger::Request& req,
                        std_srvs::Trigger::Response& res) {
     vrep_plugin_server::PushObject msg;
-    msg.request.wrench_at_iter.force.x = 0.3;
+    msg.request.force_at_iter.x = 0.3;
     msg.request.duration = 0.05;
 
-    execute_action_on_sims(msg, req, res);
+    // execute_action_on_sims(msg, req, res);
 
     return true;
 }
@@ -715,21 +725,47 @@ bool action_x_callback(std_srvs::Trigger::Request& req,
 bool action_y_callback(std_srvs::Trigger::Request& req,
                        std_srvs::Trigger::Response& res) {
     vrep_plugin_server::PushObject msg;
-    msg.request.wrench_at_iter.force.y = 0.35;
+    msg.request.force_at_iter.y = 0.35;
     msg.request.duration = 0.08;
 
-    execute_action_on_sims(msg, req, res);
+    // execute_action_on_sims(msg, req, res);
 
     return true;
 }
 bool action_z_callback(std_srvs::Trigger::Request& req,
                        std_srvs::Trigger::Response& res) {
+    // vrep_plugin_server::ActionA r;
+
+    // execute_action_on_sims(msg, req, res);
+
+    return true;
+}
+
+bool action_A_callback(vrep_plugin_server::ActionA::Request& req,
+                       vrep_plugin_server::ActionA::Response& res) {
     vrep_plugin_server::PushObject msg;
-    msg.request.wrench_at_iter.force.z = 0.4;
-    msg.request.duration = 0.1;
+    float force_magnitude = 0.06;
+    switch (req.direction) {
+        case vrep_plugin_server::ActionA::Request::DIR_X:
+        case vrep_plugin_server::ActionA::Request::DIR_nX:
+            msg.request.force_at_iter.x = sgn(req.direction) * force_magnitude;
+            break;
+        case vrep_plugin_server::ActionA::Request::DIR_Y:
+        case vrep_plugin_server::ActionA::Request::DIR_nY:
+            msg.request.force_at_iter.y = sgn(req.direction) * force_magnitude;
+            break;
+        case vrep_plugin_server::ActionA::Request::DIR_Z:
+        case vrep_plugin_server::ActionA::Request::DIR_nZ:
+            msg.request.force_at_iter.z = sgn(req.direction) * force_magnitude;
+            break;
+        default:
+            ROS_WARN_STREAM("Wrong direction!");
+            return false;
+    }
 
+    msg.request.position = req.offset;
+    msg.request.duration = 0.02; // deltaT is 0.01
     execute_action_on_sims(msg, req, res);
-
     return true;
 }
 
@@ -782,7 +818,7 @@ bool split_callback(vrep_plugin_server::AreCubesSplit::Request& req,
 
 bool halt_until_scenes_static() {
     vrep_plugin_server::IsSceneStatic scene_static;
-    scene_static.request.max_speed = 0.001;
+    scene_static.request.max_speed = 0.0001;
     int scale = 1;
     do {
         ros::Duration(log(scale * scale) * 0.05).sleep();
@@ -793,39 +829,50 @@ bool halt_until_scenes_static() {
     return scene_static.response.is_static;
 }
 
-bool success_action_x_callback(std_srvs::Trigger::Request& req,
-                               std_srvs::Trigger::Response& res) {
+// enum Action { X, Y, Z, nX, nY, nZ };
+bool success_action_all_callback(vrep_plugin_server::ActionA::Request& req,
+                                 vrep_plugin_server::ActionA::Response& res) {
     ros::WallTime begin = ros::WallTime::now();
+    ROS_INFO_STREAM("---");
     halt_until_scenes_static();
+
     // Trigger the action
-    std_srvs::Trigger action_trig;
-    action_x_callback(action_trig.request, action_trig.response);
+    action_A_callback(req, res);
 
     // Wait until scene is static
     halt_until_scenes_static();
 
     // Check if cubes are split
-    if (action_trig.response.success) {
+    if (res.success) {
         vrep_plugin_server::AreCubesSplit split_trig;
         split_trig.request.min_distance = 0.026; //2.6cm
         split_trig.request.cube_count = 3;
 
         split_callback(split_trig.request, split_trig.response);
 
-        ROS_INFO_STREAM("Action X: " <<
+        ROS_INFO_STREAM("Action A: " << req.direction << " : " <<
                         ((split_trig.response.are_split) ? "success" : "fail") <<
                         " with success rate of " << split_trig.response.ratio);
         res.success = split_trig.response.are_split;
         res.message = "Success rate of " + std::to_string(split_trig.response.ratio);
     } else {
-        ROS_WARN_STREAM("Cannot execute action X");
+        ROS_WARN_STREAM("Cannot execute action A");
         res.success = false;
-        res.message = "Cannot execute action X";
+        res.message = "Cannot execute action A";
     }
-    ROS_INFO_STREAM("[SuccessActionX] Time elapsed: " <<
+    ROS_INFO_STREAM("[SuccessActionA] Time elapsed: " <<
                     ros::WallTime::now() - begin);
+    ROS_INFO_STREAM("---");
     return true;
+
+
 }
+
+// bool success_action_x_callback(std_srvs::Trigger::Request& req,
+//                                std_srvs::Trigger::Response& res) {
+//     return success_action_all_callback(vrep_plugin_server::ActionA::Request::DIR_X,
+//                                        req, res);
+// }
 
 
 void simulationCleanUpTimerCallback(const ros::TimerEvent& e) {
@@ -877,6 +924,8 @@ int main(int argc, char** argv) {
                                                        eval_force_torque_callback);
     reset_scenes_service = node->advertiseService("resetScenes",
                                                   reset_scenes_callback);
+    action_A_service = node->advertiseService("action_A",
+                                              action_A_callback);
     action_x_service = node->advertiseService("action_x",
                                               action_x_callback);
     action_y_service = node->advertiseService("action_y",
@@ -885,8 +934,8 @@ int main(int argc, char** argv) {
                                               action_z_callback);
     split_service = node->advertiseService("areCubesSplit",
                                            split_callback);
-    success_action_x_service = node->advertiseService("success_action_x",
-                                                      success_action_x_callback);
+    success_action_x_service = node->advertiseService("success_action_all",
+                                                      success_action_all_callback);
     ROS_INFO_STREAM("All top level services and topics advertised!");
 
     ros::Timer sim_cleanup_timer =

@@ -145,7 +145,12 @@ add_executable(cube_interface_node src/cube_interface.cpp)
 
 ## Add cmake target dependencies of the executable
 ## same as for the library above
-# add_dependencies(world2sim_node ${${PROJECT_NAME}_EXPORTED_TARGETS} ${catkin_EXPORTED_TARGETS})
+add_dependencies(cube_interface_node
+  ${${PROJECT_NAME}_EXPORTED_TARGETS}
+  ${catkin_EXPORTED_TARGETS}
+  sim_architect_gencpp
+  vrep_plugin_server_gencpp
+)
 
 ## Specify libraries to link a library or executable target against
 # target_link_libraries(world2sim_node

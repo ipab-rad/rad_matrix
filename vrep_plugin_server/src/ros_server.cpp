@@ -274,6 +274,7 @@ bool ROSServer::reset_scene_callback(
         }
         loadScene();
     }
+    cleanCubesFromScene();
     response.result = parseInstructions(instr);
     if (request.start_scene) {
         response.result &= (simStartSimulation() != -1);
@@ -286,12 +287,60 @@ bool ROSServer::push_object_callback(
     vrep_plugin_server::PushObject::Response& response) {
     push_end_iters = request.duration / simGetSimulationTimeStep();
 
-    wrench_push_req.wrench = request.wrench_at_iter;
-    wrench_push_req.handle = request.handle;
+    force_push_req.request.force = request.force_at_iter;
+    if (request.handle != 0) {
+        force_push_req.request.handle = request.handle;
+        force_push_req.request.position = request.position;
+    } else {
+        ROS_WARN_STREAM("Assuming the tower is upright!");
+        // calculate position and handle
+        float tabletop_height;
+        simGetObjectFloatParameter(tabletop_handle,
+                                   sim_objfloatparam_objbbox_max_z, &tabletop_height);
+        float target_height = CUBE_SIZE * (request.discrete_height - 0.5) +
+                              tabletop_height;
+        for (int i = 0; i < request.discrete_height; ++i) {
+            std::string name = "cube" + std::to_string(i);
+            int handle = simGetObjectHandle(name.c_str());
+            if (handle == -1) {
+                // Smalelr number of cubes, break here
+                break;
+            }
+            // All is ok
+            float max_z, min_z;
+            simGetObjectFloatParameter(handle, sim_objfloatparam_objbbox_max_z, &max_z);
+            simGetObjectFloatParameter(handle, sim_objfloatparam_objbbox_min_z, &min_z);
+            if (max_z > target_height && min_z < target_height) {
+                // this is the right cube!
+                // Can assume centre is in the middle
+                force_push_req.request.handle = handle;
+                force_push_req.request.position.x = 0;
+                force_push_req.request.position.y = 0;
+                force_push_req.request.position.z = (max_z + min_z) * 0.5;
+            }
+        }
+    }
 
     response.result = push_end_iters;
     ROS_INFO_STREAM("[PushObjectRequest] Will continue pushing for " <<
                     push_end_iters << " iterations.");
+    return true;
+}
+
+bool ROSServer::cleanCubesFromScene() {
+    int handle;
+    int id = 0;
+    do {
+        string name = "cube" + std::to_string(id++);
+        handle = simGetObjectHandle(name.c_str());
+        if (handle != -1) {
+            if (simRemoveObject(handle) == -1) {
+                ROS_DEBUG_STREAM("Cannot remove object while cleaning the scene from reset: "
+                                 << name << " handle: " << handle);
+                return false;
+            }
+        }
+    } while (handle != -1);
     return true;
 }
 
@@ -434,9 +483,9 @@ void ROSServer::mainScriptAboutToBeCalled() {
     spinOnce();
 
     // Get cube position
-    float pos[3];
-    simGetObjectPosition(cube_handle, WORLD_FRAME, pos);
-    ROS_DEBUG("Cube position: x: %f, y: %f, z: %f", pos[0], pos[1], pos[2]);
+    // float pos[3];
+    // simGetObjectPosition(cube_handle, WORLD_FRAME, pos);
+    // ROS_DEBUG("Cube position: x: %f, y: %f, z: %f", pos[0], pos[1], pos[2]);
 
     if (cam_pub.getNumSubscribers() > 0) {
         sensor_msgs::Image frame;
@@ -446,10 +495,9 @@ void ROSServer::mainScriptAboutToBeCalled() {
     }
 
     // Apply continious force on cube
-    // TODO: TEST this works
     if (push_end_iters > 0) {
-        vrep_plugin_server::AddForceTorque::Response resp;
-        bool ok = add_force_torque_callback(wrench_push_req, resp);
+        bool ok = add_force_callback(force_push_req.request,
+                                     force_push_req.response);
         if (!ok) {
             ROS_WARN_STREAM("Cannot apply push iteration at " <<
                             push_end_iters << " left.");
@@ -460,9 +508,9 @@ void ROSServer::mainScriptAboutToBeCalled() {
 
 void ROSServer::simulationAboutToStart() {
     ROS_INFO("Grab handles");
-    cube_handle = simGetObjectHandle("cube_0");
+    tabletop_handle = simGetObjectHandle("Tabletop");
     simcam_handle = simGetObjectHandle("simcam");
-    ROS_INFO_STREAM("[V-REP_ROS_SIM] Cube handle: " << cube_handle);
+    ROS_INFO_STREAM("[V-REP_ROS_SIM] Tabletop handle: " << tabletop_handle);
     ROS_INFO_STREAM("[V-REP_ROS_SIM] Camera handle: " << simcam_handle);
 }
 
@@ -579,6 +627,12 @@ bool ROSServer::are_cubes_split_callback(
         std::array<float, 3> position;
         simGetObjectPosition(handle, -1, position.data());
         positions.push_back(position);
+    }
+
+    if (positions.empty()) {
+        ROS_WARN("No cubes found! Thus cannot evaluate if they are split.");
+        res.are_split = false;
+        return true;
     }
 
     bool split = true;

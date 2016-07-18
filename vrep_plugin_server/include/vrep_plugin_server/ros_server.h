@@ -22,6 +22,7 @@
 #define MAX_SIMS_COUNT	1
 #define SCENE_PATH			"scenes/rad_tabletop.ttt"
 #define DEF_SETTINGS_PATH	"/home/daniel/scene.config"
+#define CUBE_SIZE		float(0.0254)
 
 class ROSServer {
   public:
@@ -47,7 +48,7 @@ class ROSServer {
 
 	void streamAllData();
 	bool readFileToString(const std::string file, std::vector<std::string>& data);
-
+	bool cleanCubesFromScene();
 	bool parseInstructions(const std::vector<std::string>& instr);
 
 	bool isSceneStatic(float max_speed = 0.1f);
@@ -99,10 +100,10 @@ class ROSServer {
 
 	// Handles
 	int simcam_handle;
-	int cube_handle;
+	int tabletop_handle;
 
 	int push_end_iters;
-	vrep_plugin_server::AddForceTorque::Request wrench_push_req;
+	vrep_plugin_server::AddForce force_push_req;
 
 	unsigned int sim_iter;
 	int sim_ID;

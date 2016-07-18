@@ -1,14 +1,17 @@
 # Apply a force torque at every time step for a specified amount of type.
 # The profile of the applied force can change.
 
+# [Best] give handle + relative position of the applied force wrt the centre of handle
+
 int64 handle
-geometry_msgs/Wrench wrench_at_iter
+geometry_msgs/Vector3 force_at_iter
+geometry_msgs/Point position
 float64 duration
 
+int64 discrete_height
 #int32 BLOCK=0
 #int32 RAMP=1
 #int32 TRIANGLE=2
-
 #int32 profile
 ---
 int32 result

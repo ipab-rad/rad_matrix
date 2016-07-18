@@ -25,6 +25,7 @@ add_service_files(
   ResetScene.srv
   PushObject.srv
   AreCubesSplit.srv
+  ActionA.srv
 )
 
 generate_messages(

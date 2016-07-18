@@ -1,0 +1,16 @@
+# specify the block related height at which to be pushed with direction
+
+int32 cube_id
+geometry_msgs/Point offset
+int32 direction
+
+int32 DIR_X=1
+int32 DIR_Y=2
+int32 DIR_Z=3
+
+int32 DIR_nX=-1
+int32 DIR_nY=-2
+int32 DIR_nZ=-3
+---
+bool success
+string message

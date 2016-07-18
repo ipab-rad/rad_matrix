@@ -12,6 +12,7 @@
 #include <pcl/common/common.h>
 
 #include <vrep_plugin_server/ResetScene.h>
+#include <vrep_plugin_server/ActionA.h>
 
 #include <tf2_ros/transform_listener.h>
 #include <tf2_sensor_msgs/tf2_sensor_msgs.h>
@@ -31,6 +32,8 @@ tf2_ros::Buffer* tfBuffer;
 tf2_ros::TransformListener* tfListener;
 
 visualization_msgs::MarkerArray axisMarkers;
+
+const float TABLE_OFFSET(0.72);
 
 template <typename T>
 bool IsInBounds(const T& value, const T& low, const T& high) {
@@ -119,7 +122,7 @@ bool computeBoundingBox(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud,
 	        IsInBounds(rotrect.angle, 315.0f, 360.0f) ||
 	        IsInBounds(rotrect.angle, 135.0f, 225.0f)) &&*/
 	    width < depth) {
-		rotrect.angle += 90;
+		rotrect.angle = rotrect.angle - 90;
 		std::swap(width, depth);
 	}
 	ROS_WARN_STREAM("size: :"  << rotrect.size);
@@ -130,8 +133,7 @@ bool computeBoundingBox(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud,
 	bboxTransform.z() = (minPoint_raw.z + maxPoint_raw.z) * 0.5;
 
 	zrot = rotrect.angle * M_PI / 180.0;
-	Eigen::AngleAxisf rotAngle(zrot,
-	                           Eigen::Vector3f::UnitZ());
+	Eigen::AngleAxisf rotAngle(zrot, Eigen::Vector3f::UnitZ());
 	bboxQuaternion = rotAngle;
 
 #endif
@@ -165,7 +167,7 @@ bool computeBoundingBox(pcl::PointCloud<pcl::PointXYZ>::Ptr cloud,
 	marker.scale.x = depth;
 	marker.scale.y = width;
 	marker.scale.z = height;
-	marker.color.a = 0.5; // Don't forget to set the alpha!
+	marker.color.a = 0.2; // Don't forget to set the alpha!
 	marker.color.r = 0.0;
 	marker.color.g = 1.0;
 	marker.color.b = 0.0;
@@ -207,6 +209,99 @@ bool addCube(Eigen::Quaternionf bboxQuaternion,
 
 
 /////
+enum Orientation { UNKNOWN, PLANAR, TOWER };
+double delta_p = 0.002;
+/////
+std::vector<std::vector<SimCubeType> > get_possible_configs(int height,
+                                                            int width,
+                                                            int depth,
+                                                            double alpha,
+                                                            std::vector<SimCubeType> config_so_far = std::vector<SimCubeType>(),
+                                                            Orientation orient = Orientation::UNKNOWN) {
+	ROS_INFO_STREAM("Inside function");
+	std::vector<std::vector<SimCubeType> > res;
+	if (height == 0 || width == 0 || depth == 0) {
+		res.push_back(config_so_far);
+		ROS_INFO_STREAM("Reached the end of the recursion");
+		return res;
+	}
+
+	// Get orientation
+	if (orient == Orientation::UNKNOWN) {
+		if (height == 1 && (width != 1 || depth != 1)) // planar
+			orient = Orientation::PLANAR;
+		else
+			orient = Orientation::TOWER;
+	}
+
+	if (orient == Orientation::PLANAR) {
+		// the cubes are planar
+		ROS_WARN_STREAM("Cubes are planar, not tested.");
+		if (width < depth) {
+			// alpha = M_PI / 2 - alpha;
+			std::swap(width, depth);
+		}
+		for (int i = 1; i <= width; ++i) {
+			ROS_INFO_STREAM("Attempting width: " << i);
+			std::vector<std::vector<SimCubeType> > new_config;
+			std::vector<SimCubeType> new_config_so_far(config_so_far);
+			SimCubeType new_block;
+			new_block.height = 1 * cube_size;
+			new_block.width = i * cube_size;
+			new_block.depth = 1 * cube_size;
+			new_block.loc.x = config_so_far.empty() ? float(new_block.width) * 0.5 :
+			                  config_so_far.back().loc.x +
+			                  (config_so_far.back().width + new_block.width) * 0.5 * cos(alpha);
+
+			new_block.loc.y = config_so_far.empty() ? float(new_block.depth) * 0.5 :
+			                  config_so_far.back().loc.y +
+			                  (config_so_far.back().depth + new_block.depth) * 0.5 * sin(alpha);
+			new_block.loc.z = cube_size / 2.0 + delta_p;
+			ROS_INFO_STREAM("loc.z: " << new_block.loc.z);
+			new_config_so_far.push_back(new_block);
+			ROS_INFO_STREAM("new_config_so_far.size()=" << new_config_so_far.size());
+			new_config = get_possible_configs(height, width - i, depth, alpha,
+			                                  new_config_so_far, orient);
+			ROS_INFO_STREAM("new_config.size()=" << new_config.size());
+			// res.insert(std::end(res), std::begin(new_config), std::end(new_config));
+			std::copy(new_config.begin(), new_config.end(), std::back_inserter(res));
+
+			ROS_INFO_STREAM("Copy, so big res has " << res.size() << " elements.");
+		}
+
+	} else if (orient == Orientation::TOWER) {
+		// It is a tower
+		for (int i = 1; i <= height; ++i) {
+			ROS_INFO_STREAM("Attempting height: " << i);
+			std::vector<std::vector<SimCubeType> > new_config;
+			std::vector<SimCubeType> new_config_so_far(config_so_far);
+			SimCubeType new_block;
+			new_block.height = i * cube_size;
+			new_block.width = 1 * cube_size;
+			new_block.depth = 1 * cube_size;
+			new_block.loc.x = 0;
+			new_block.loc.y = 0;
+			new_block.loc.z = config_so_far.empty() ? float(new_block.height) * 0.5 :
+			                  config_so_far.back().loc.z + config_so_far.back().height * 0.5 +
+			                  float(new_block.height) * 0.5 + delta_p;
+			ROS_INFO_STREAM("loc.z: " << new_block.loc.z);
+			new_config_so_far.push_back(new_block);
+			ROS_INFO_STREAM("new_config_so_far.size()=" << new_config_so_far.size());
+			new_config = get_possible_configs(height - i, width, depth, alpha,
+			                                  new_config_so_far, orient);
+			ROS_INFO_STREAM("new_config.size()=" << new_config.size());
+			// res.insert(std::end(res), std::begin(new_config), std::end(new_config));
+			std::copy(new_config.begin(), new_config.end(), std::back_inserter(res));
+
+			ROS_INFO_STREAM("Copy, so big res has " << res.size() << " elements.");
+		}
+	} else {
+		ROS_WARN_STREAM("Cannot decide how to orient the single block with no history");
+	}
+	return res;
+}
+
+/////
 
 void new_cloud_2_process(sensor_msgs::PointCloud2::Ptr& msg) {
 	pcl::PointCloud<pcl::PointXYZ>::Ptr cloud(
@@ -214,20 +309,24 @@ void new_cloud_2_process(sensor_msgs::PointCloud2::Ptr& msg) {
 	if (msg != nullptr) {
 		// DO tf2 transform
 		// Untested
-		ROS_INFO_STREAM("Looking up tf");
-		geometry_msgs::TransformStamped transform;
-		transform = tfBuffer->lookupTransform(world_frame,
-		                                      msg->header.frame_id,
-		                                      ros::Time(0), //acquisition_time - ros::Duration().fromSec(4),
-		                                      ros::Duration(0.1));
-		ROS_DEBUG_STREAM("Will perform the transform: " << transform);
-
-		// sensor_msgs::PointCloud2 cloud_out;
 		sensor_msgs::PointCloud2::Ptr cloud_out(new sensor_msgs::PointCloud2);
-		tf2::doTransform(*msg, *cloud_out, transform);
+		if (world_frame != msg->header.frame_id) {
+			ROS_INFO_STREAM("Looking up tf");
+			geometry_msgs::TransformStamped transform;
+			transform = tfBuffer->lookupTransform(world_frame,
+			                                      msg->header.frame_id,
+			                                      ros::Time(0), //acquisition_time - ros::Duration().fromSec(4),
+			                                      ros::Duration(0.1));
+			ROS_DEBUG_STREAM("Will perform the transform: " << transform);
 
-		ROS_INFO_STREAM("Performed the transform from " <<  msg->header.frame_id <<
-		                " to " << cloud_out->header.frame_id);
+			// sensor_msgs::PointCloud2 cloud_out;
+			tf2::doTransform(*msg, *cloud_out, transform);
+
+			ROS_INFO_STREAM("Performed the transform from " <<  msg->header.frame_id <<
+			                " to " << cloud_out->header.frame_id);
+		} else {
+			cloud_out = msg;
+		}
 		// Convert to pcl
 		pcl::PCLPointCloud2 pcl_pc2;
 		pcl_conversions::toPCL(*cloud_out, pcl_pc2);
@@ -252,87 +351,23 @@ void new_cloud_2_process(sensor_msgs::PointCloud2::Ptr& msg) {
 	const int cube_width  = std::round(width  / cube_size);
 	const int cube_depth  = std::round(depth  / cube_size);
 	ROS_INFO_STREAM(
-	    "\n\tcube_height:" << cube_height << " " << height << std::endl <<
-	    "\tcube_width: " << cube_width << " " << width << std::endl <<
-	    "\tcube_depth: " << cube_depth << " " << depth);
+	    "\n\tcube_height: " << cube_height << " " << height << std::endl <<
+	    "\tcube_width:  "   << cube_width << " " << width << std::endl <<
+	    "\tcube_depth:  "   << cube_depth << " " << depth);
 
 	if (cube_height <= 0 || cube_depth <= 0 || cube_width <= 0) {
 		ROS_WARN_STREAM("Wrong cube parameters! Size <= 0.");
 		return;
+	} else if ((cube_height > 1 && (cube_depth > 1 || cube_width > 1)) ||
+	           (cube_depth > 1 && (cube_height > 1 || cube_width > 1)) ||
+	           (cube_width > 1 && (cube_height > 1 || cube_depth > 1))) {
+		ROS_WARN_STREAM("Too big of an object! At least two parameters need to be 1");
+		return;
 	}
 
-	ROS_INFO_STREAM("BEFORE LOOP");
-
-	// Subdivide box into possible cube configurations
+	ROS_INFO_STREAM("Getting subcube division!!!");
 	std::vector<std::vector<SimCubeType>> configs;
-	std::vector<SimCubeType> config_so_far;
-	pcl::PointXYZ current_loc;
-	bool inited = false;
-	zrot = M_PI / 2 - zrot;
-	for (int h = 0; h < cube_height; ++h) {
-		for (int w = 0; w < cube_width; ++w) {
-			for (int d = 0; d < cube_depth; ++d) {
-				ROS_INFO_STREAM("IN LOOP");
-				pcl::PointXYZ last_c;
-				if (inited)
-					last_c = config_so_far.back().loc;
-				ROS_INFO_STREAM("last c defined");
-
-				// Merge all remaining
-				std::vector<SimCubeType> new_config(config_so_far);
-				SimCubeType c; // new block filling all remaining
-				c.loc = pcl::PointXYZ(((cube_depth - d) / 2.0 + d) * cube_size,
-				                      ((cube_width - w) / 2.0 + w) * cube_size,
-				                      ((cube_height - h) / 2.0 + h) * cube_size);
-				ROS_INFO_STREAM("c.loc ");
-
-				c.height = (cube_height - h) * cube_size;
-				c.width = (cube_width - w) * cube_size;
-				c.depth = (cube_depth - d) * cube_size;
-
-				ROS_INFO_STREAM("before change" );//<<
-				// c.loc.x);// << " " << last_c.x << " " << zrot);
-				std::cout << std::endl;
-				if (inited) {
-					// Move the x/y coordinates
-					double dp = std::sqrt(std::pow(c.loc.x - last_c.x, 2) +
-					                      std::pow(c.loc.y - last_c.y, 2));
-					ROS_INFO_STREAM("dp" << dp);
-					double w = std::max(c.width, c.depth);
-					ROS_INFO_STREAM("w" << w);
-					c.loc.x -= std::sin(zrot) * std::sqrt(w * w + dp * dp);
-					c.loc.y -= -std::sin(zrot) * w;
-
-					ROS_WARN_STREAM("c.loc: " << c.loc);
-
-				}
-				new_config.push_back(c);
-
-				configs.push_back(new_config);
-
-				// add current cube to the list
-				SimCubeType std_cube; // Add a standard cube
-				std_cube.loc = pcl::PointXYZ((d + 0.5) * cube_size,
-				                             (w + 0.5) * cube_size,
-				                             (h + 0.5 ) * cube_size);
-				std_cube.height = 1 * cube_size;
-				std_cube.width = 1 * cube_size;
-				std_cube.depth = 1 * cube_size;
-
-				if (inited) {
-					// Move the x/y coordinates
-					double dp = std::sqrt(std::pow(std_cube.loc.x - last_c.x, 2) +
-					                      std::pow(std_cube.loc.y - last_c.y, 2));
-					double w = std::max(std_cube.width, std_cube.depth);
-
-					std_cube.loc.x -= std::sin(zrot) * std::sqrt(w * w + dp * dp);
-					std_cube.loc.y -= -std::sin(zrot) * w;
-				}
-				config_so_far.push_back(std_cube);
-				inited = true; // at least one cube is pushed
-			}
-		}
-	}
+	configs = get_possible_configs(cube_height, cube_width, cube_depth, zrot);
 
 	ROS_INFO_STREAM("size: " << configs.size());
 	std::vector<std::vector<std::string>> instr_list;
@@ -345,11 +380,18 @@ void new_cloud_2_process(sensor_msgs::PointCloud2::Ptr& msg) {
 			instr += "1, "; // ROS shape
 			instr += std::to_string(configs[i][j].loc.x) + "," +
 			         std::to_string(configs[i][j].loc.y) + "," +
-			         std::to_string(configs[i][j].loc.z + 0.8) + ","; // position
-			instr += "0, 0, 0, 1,"; // Orientation
-			instr += std::to_string(configs[i][j].height) + "," +
+			         std::to_string(configs[i][j].loc.z + TABLE_OFFSET) + ","; // position
+			// instr += "0, 0, 0, 1,"; // Orientation
+			instr += std::to_string(boxQuaternion.x()) + "," + // Orientation
+			         std::to_string(boxQuaternion.y()) + "," +
+			         std::to_string(boxQuaternion.z()) + "," +
+			         std::to_string(boxQuaternion.w()) + ",";
+			// instr += std::to_string(configs[i][j].height) + "," +
+			//          std::to_string(configs[i][j].width) + "," +
+			//          std::to_string(configs[i][j].depth) + ","; // dimension
+			instr += std::to_string(configs[i][j].depth) + "," +
 			         std::to_string(configs[i][j].width) + "," +
-			         std::to_string(configs[i][j].depth) + ","; // dimension
+			         std::to_string(configs[i][j].height) + ","; // dimension
 			instr += "0.024,"; // mass - 24g
 			instr += "180, 240, " +
 			         std::to_string(int((255.0) * (double(j) / configs[i].size()))); // colour
@@ -369,23 +411,73 @@ void new_cloud_2_process(sensor_msgs::PointCloud2::Ptr& msg) {
 		instr_list.push_back(instrs);
 	}
 
+	return;
 	// Load it in the sims
-	for (int i = 0; i < instr_list.size(); ++i) {
-		vrep_plugin_server::ResetScene reset_msg;
-		reset_msg.request.instructions = instr_list[i];
-		reset_msg.request.reload_scene = false;
-		reset_msg.request.start_scene = true;
-		ROS_INFO_STREAM("Sending command!");
-		ros::service::call("/sim_architect/resetScene", reset_msg);
+	for (int i = 0; i < instr_list.size(); ++i) { // equals configs[i]
 
 		// Test action X
-		std_srvs::Trigger trig_msg;
-		ros::service::call("/sim_architect/success_action_x", trig_msg);
-		ROS_WARN_STREAM("Result: Option:" << i << " X Split: " <<
-		                trig_msg.response.success << " " <<
-		                trig_msg.response.message);
-		break; // Test for now with only one;
+		for (int dir = -3; dir <= 3; ++dir) {
+			if (dir == 0) continue;
+			for (int cube_target = 0; cube_target < configs[i].size(); ++cube_target) {
+				vrep_plugin_server::ActionA act_msg;
+				act_msg.request.cube_id = cube_target;
+				act_msg.request.direction = dir;
+				// make an offset per cube based
+				for (int offset_pos_z = 0;
+				        offset_pos_z < configs[i][cube_target].height / cube_size;
+				        offset_pos_z++) {
+					for (int offset_pos_y = 0;
+					        offset_pos_y < configs[i][cube_target].depth / cube_size;
+					        offset_pos_y++) {
+						for (int offset_pos_x = 0;
+						        offset_pos_x < configs[i][cube_target].width / cube_size;
+						        offset_pos_x++) {
+							geometry_msgs::Point pos;
+							pos.x = configs[i][cube_target].loc.x;
+							pos.y = configs[i][cube_target].loc.y;
+							pos.z = configs[i][cube_target].loc.z + TABLE_OFFSET;
+
+							// Adjust for cubes that consist of multiple sizes
+							pos.z += cube_size * (offset_pos_z  + 0.5 -
+							                      (configs[i][cube_target].height / cube_size / 2));
+							pos.y += cube_size * (offset_pos_y  + 0.5 -
+							                      (configs[i][cube_target].depth / cube_size / 2));
+							pos.x += cube_size * (offset_pos_x  + 0.5 -
+							                      (configs[i][cube_target].width / cube_size / 2));
+
+							act_msg.request.offset = pos;
+							ROS_INFO_STREAM("Position: " << pos);
+
+							// execute all calls
+							// Reset scene
+							vrep_plugin_server::ResetScene reset_msg;
+							reset_msg.request.instructions = instr_list[i];
+							reset_msg.request.reload_scene = false;
+							reset_msg.request.start_scene = true;
+							ROS_INFO_STREAM("Sending command!");
+							if (!ros::service::call("/sim_architect/resetScenes", reset_msg)) {
+								ROS_ERROR_STREAM("Cannot execute reset scene with instruction: (1):" <<
+								                 reset_msg.request.instructions[0]);
+							}
+
+							// Test action
+							if (!ros::service::call("/sim_architect/success_action_all", act_msg)) {
+								ROS_ERROR_STREAM("Cannot test the success of action X!");
+							}
+							ROS_INFO_STREAM("Result:\n\t\tOption:" << i << " X Split: " <<
+							                ((act_msg.response.success) ? "success" : "fail") << " msg: " <<
+							                act_msg.response.message);
+							// return; // Test for now with only one;
+							ros::Duration(0.005).sleep();
+						}
+					}
+				}
+
+
+			}
+		}
 	}
+	ROS_INFO_STREAM("Executed all possible scenarios");
 }
 
 
@@ -414,12 +506,6 @@ int main(int argc, char** argv) {
 
 	ros::param::param("cube_size", cube_size, 0.0254);
 	ros::param::param<std::string>("world_frame", world_frame, "base_link");
-
-	// // FOR testing!
-	// ROS_INFO_STREAM("Begin testing");
-	// new_cloud_2_process(pc_msg);
-	// ROS_INFO_STREAM("---");
-	// // End for testing
 
 	new_pc = false;
 	ros::Rate r(30);
