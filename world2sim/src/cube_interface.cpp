@@ -210,12 +210,12 @@ bool addCube(Eigen::Quaternionf bboxQuaternion,
 
 /////
 enum Orientation { UNKNOWN, PLANAR, TOWER };
-double delta_p = 0.002;
+double delta_p = 0.001;
 /////
 std::vector<std::vector<SimCubeType> > get_possible_configs(int height,
                                                             int width,
                                                             int depth,
-                                                            double alpha,
+                                                            double& alpha,
                                                             std::vector<SimCubeType> config_so_far = std::vector<SimCubeType>(),
                                                             Orientation orient = Orientation::UNKNOWN) {
 	ROS_INFO_STREAM("Inside function");
@@ -238,7 +238,8 @@ std::vector<std::vector<SimCubeType> > get_possible_configs(int height,
 		// the cubes are planar
 		ROS_WARN_STREAM("Cubes are planar, not tested.");
 		if (width < depth) {
-			// alpha = M_PI / 2 - alpha;
+			ROS_WARN_STREAM("Rotating!");
+			alpha = M_PI / 2 - alpha;
 			std::swap(width, depth);
 		}
 		for (int i = 1; i <= width; ++i) {
@@ -250,12 +251,12 @@ std::vector<std::vector<SimCubeType> > get_possible_configs(int height,
 			new_block.width = i * cube_size;
 			new_block.depth = 1 * cube_size;
 			new_block.loc.x = config_so_far.empty() ? float(new_block.width) * 0.5 :
-			                  config_so_far.back().loc.x +
-			                  (config_so_far.back().width + new_block.width) * 0.5 * cos(alpha);
+			                  config_so_far.back().loc.x -
+			                  (config_so_far.back().width + new_block.width) * 0.5 * sin(alpha);
 
-			new_block.loc.y = config_so_far.empty() ? float(new_block.depth) * 0.5 :
-			                  config_so_far.back().loc.y +
-			                  (config_so_far.back().depth + new_block.depth) * 0.5 * sin(alpha);
+			new_block.loc.y = config_so_far.empty() ? float(new_block.width) * 0.5 :
+			                  (config_so_far.back().loc.y +
+			                   (config_so_far.back().width + new_block.width) * 0.5 * cos(alpha));
 			new_block.loc.z = cube_size / 2.0 + delta_p;
 			ROS_INFO_STREAM("loc.z: " << new_block.loc.z);
 			new_config_so_far.push_back(new_block);
@@ -368,6 +369,7 @@ void new_cloud_2_process(sensor_msgs::PointCloud2::Ptr& msg) {
 	ROS_INFO_STREAM("Getting subcube division!!!");
 	std::vector<std::vector<SimCubeType>> configs;
 	configs = get_possible_configs(cube_height, cube_width, cube_depth, zrot);
+	boxQuaternion = Eigen::AngleAxisf(zrot, Eigen::Vector3f::UnitZ());
 
 	ROS_INFO_STREAM("size: " << configs.size());
 	std::vector<std::vector<std::string>> instr_list;
