@@ -711,7 +711,7 @@ bool execute_action_on_sims(vrep_plugin_server::PushObject& rmsg,
 bool action_A_callback(vrep_plugin_server::ActionA::Request& req,
                        vrep_plugin_server::ActionA::Response& res) {
     vrep_plugin_server::PushObject msg;
-    float force_magnitude = 0.06;
+    float force_magnitude = 0.03;
     switch (req.direction) {
         case vrep_plugin_server::ActionA::Request::DIR_X:
         case vrep_plugin_server::ActionA::Request::DIR_nX:
@@ -813,6 +813,7 @@ bool success_action_all_callback(vrep_plugin_server::ActionA::Request& req,
     if (res.success) {
         vrep_plugin_server::AreCubesSplit split_trig;
         split_trig.request.min_distance = 0.026; //2.6cm
+        split_trig.request.min_angle = M_PI / 12.0; //15 deg
         split_trig.request.cube_count = 3;
 
         split_callback(split_trig.request, split_trig.response);
@@ -831,8 +832,6 @@ bool success_action_all_callback(vrep_plugin_server::ActionA::Request& req,
                     ros::WallTime::now() - begin);
     ROS_INFO_STREAM("---");
     return true;
-
-
 }
 
 void simulationCleanUpTimerCallback(const ros::TimerEvent& e) {

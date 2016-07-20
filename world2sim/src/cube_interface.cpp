@@ -403,8 +403,15 @@ void new_cloud_2_process(sensor_msgs::PointCloud2::Ptr& msg) {
 		instr_list.push_back(instrs);
 	}
 
+
+	// Outcome
+	int sz = 6 * std::max(cube_depth, std::max(cube_width, cube_height));
+	ROS_WARN_STREAM("sz: " << sz << " condfigs: " << configs.size());
+	Eigen::MatrixXd success_matrix(configs.size(), sz);
+	ROS_INFO_STREAM("size: " << success_matrix);
 	// Load it in the sims
 	for (int i = 0; i < instr_list.size(); ++i) { // equals configs[i]
+		int action_num = 0;
 		// Test action X
 		for (int dir = -3; dir <= 3; ++dir) {
 			if (dir == 0) continue;
@@ -454,9 +461,13 @@ void new_cloud_2_process(sensor_msgs::PointCloud2::Ptr& msg) {
 							if (!ros::service::call("/sim_architect/success_action_all", act_msg)) {
 								ROS_ERROR_STREAM("Cannot test the success of action X!");
 							}
-							ROS_INFO_STREAM("Result:\n\t\tOption:" << i << " X Split: " <<
+							ROS_INFO_STREAM("Result:\n\t\tOption: " << i << "/" << instr_list.size() <<
+							                " Dir: " << dir << " X Split: " <<
 							                ((act_msg.response.success) ? "success" : "fail") << " msg: " <<
 							                act_msg.response.message);
+
+							success_matrix(i, action_num++) = (act_msg.response.success) ? 1 : 0;
+
 							// ros::Duration(0.005).sleep();
 						}
 					}
@@ -465,7 +476,9 @@ void new_cloud_2_process(sensor_msgs::PointCloud2::Ptr& msg) {
 			}
 		}
 	}
-	ROS_INFO_STREAM("Executed all possible scenarios");
+	ROS_INFO_STREAM("Executed all possible scenarios\n" << success_matrix);
+	ROS_WARN_STREAM("sum: \n" << success_matrix.colwise().sum());
+	ros::Duration(5).sleep();
 }
 
 

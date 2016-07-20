@@ -1,4 +1,5 @@
 float32 min_distance
+float32 min_angle
 int32 cube_count
 ---
 bool are_split

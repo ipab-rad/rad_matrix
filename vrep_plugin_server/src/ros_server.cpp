@@ -612,10 +612,17 @@ double dist_vec(float* a, float* b) {
                      std::pow(a[2] - b[2], 2));
 }
 
+double angle_dif(float* a, float* b) {
+    return std::abs(a[0] - b[0]) +
+           std::abs(a[1] - b[1]) +
+           std::abs(a[2] - b[2]);
+}
+
 bool ROSServer::are_cubes_split_callback(
     vrep_plugin_server::AreCubesSplit::Request& req,
     vrep_plugin_server::AreCubesSplit::Response& res) {
     std::vector<std::array<float, 3>> positions;
+    std::vector<std::array<float, 3>> orientations;
     for (int i = 0; i < req.cube_count; ++i) {
         std::string name = "cube" + std::to_string(i);
         int handle = simGetObjectHandle(name.c_str());
@@ -624,12 +631,14 @@ bool ROSServer::are_cubes_split_callback(
             break;
         }
         // All is ok
-        std::array<float, 3> position;
+        std::array<float, 3> position, orientation;
         simGetObjectPosition(handle, -1, position.data());
+        simGetObjectPosition(handle, -1, orientation.data());
         positions.push_back(position);
+        orientations.push_back(orientation);
     }
 
-    if (positions.empty()) {
+    if (positions.empty() || orientations.empty()) {
         ROS_WARN("No cubes found! Thus cannot evaluate if they are split.");
         res.are_split = false;
         return true;
@@ -639,7 +648,8 @@ bool ROSServer::are_cubes_split_callback(
     for (int i = 0; i < positions.size(); ++i) {
         for (int j = 0; (j < positions.size()) && split; ++j) {
             if ((i != j) &&
-                    (dist_vec(positions[i].data(), positions[j].data()) < req.min_distance)) {
+                    ((dist_vec(positions[i].data(), positions[j].data()) < req.min_distance) ||
+                     (angle_dif(orientations[i].data(), orientations[j].data()) < req.min_angle))) {
                 split = false;
                 break;
             }
