@@ -40,7 +40,7 @@ echo HIDDEN = "${HIDDEN}"
 START=1
 END=COUNT
 echo "Starting..."
-export ROS_MASTER_URI=http://goya:11311
+export ROS_MASTER_URI=http://primec1:11311
 
 Xvfb :1 -screen 0 1024x768x16 &> xvfb.log  &
 DISPLAY=:1
